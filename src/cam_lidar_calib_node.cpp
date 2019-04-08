@@ -13,12 +13,22 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/common/eigen.h>
 #include <pcl/common/transforms.h>
+#include <pcl/filters/passthrough.h>
+
+#include <pcl/sample_consensus/ransac.h>
+#include <pcl/sample_consensus/sac_model_plane.h>
+#include <pcl/sample_consensus/sac_model_line.h>
+#include <pcl/sample_consensus/sac_model_sphere.h>
+#include <pcl/sample_consensus/sac_model.h>
+
+#include <pcl/filters/statistical_outlier_removal.h>
 
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 
-#include "opencv2/opencv.hpp"
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/eigen.hpp>
 
 #include <cv_bridge/cv_bridge.h>
 
@@ -34,6 +44,7 @@ private:
     message_filters::Subscriber<sensor_msgs::PointCloud2> *cloud_sub;
     message_filters::Subscriber<sensor_msgs::Image> *image_sub;
     message_filters::Synchronizer<SyncPolicy> *sync;
+    ros::Publisher cloud_pub;
 
     cv::Mat image_in;
     cv::Mat image_resized;
@@ -41,7 +52,14 @@ private:
     cv::Mat distCoeff;
     std::vector<cv::Point2f> image_points;
     std::vector<cv::Point3f> object_points;
+    std::vector<cv::Point2f> projected_points;
     bool boardDetectedInCam;
+    float dx, dy;
+    cv::Mat tvec, rvec;
+    cv::Mat C_R_W;
+    Eigen::Matrix3d c_R_w;
+    Eigen::Vector3d c_t_w;
+    sensor_msgs::PointCloud2 out_cloud;
 public:
 
 
@@ -51,21 +69,66 @@ public:
         image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, "/pylon_camera_node/image_raw", 1);
         sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *caminfo_sub, *cloud_sub, *image_sub);
         sync->registerCallback(boost::bind(&camLidarCalib::callback, this, _1, _2, _3));
+        cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("velodyne_points_out", 1);
         projection_matrix = cv::Mat::zeros(3, 3, CV_64F);
         distCoeff = cv::Mat::zeros(4, 1, CV_64F);
         boardDetectedInCam = false;
-
-        for(int i = 0; i <9; i++){
-            for (int j = 0; j < 6; j++) {
-                
-            }
-        }
+        tvec = cv::Mat::zeros(3, 1, CV_64F);
+        rvec = cv::Mat::zeros(3, 1, CV_64F);
+        C_R_W = cv::Mat::eye(3, 3, CV_64F);
+        c_R_w = Eigen::Matrix3d::Identity();
+        dx = 0.075;
+        dy = 0.075;
+        for(int i = 0; i < 9; i++)
+            for (int j = 0; j < 6; j++)
+                object_points.push_back(cv::Point3f(i*dx, j*dy, 0.0));
     }
 
-    void callback(const sensor_msgs::CameraInfoConstPtr &camInfo_msg,
-                  const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
-                  const sensor_msgs::ImageConstPtr &image_msg){
+    void cloudHandler(const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
 
+        pcl::PointCloud<pcl::PointXYZ>::Ptr in_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::fromROSMsg(*cloud_msg, *in_cloud);
+
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered_x(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered_y(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::PointCloud<pcl::PointXYZ >::Ptr plane(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::PointCloud<pcl::PointXYZ >::Ptr plane_filtered(new pcl::PointCloud<pcl::PointXYZ>);
+
+        /// Pass through filters
+        pcl::PassThrough<pcl::PointXYZ> pass_x;
+        pass_x.setInputCloud(in_cloud);
+        pass_x.setFilterFieldName("x");
+        pass_x.setFilterLimits(0.0, 5.0);
+        pass_x.filter(*cloud_filtered_x);
+        pcl::PassThrough<pcl::PointXYZ> pass_y;
+        pass_y.setInputCloud(cloud_filtered_x);
+        pass_y.setFilterFieldName("y");
+        pass_y.setFilterLimits(-1, 1);
+        pass_y.filter(*cloud_filtered_y);
+
+        /// Plane Segmentation
+        pcl::SampleConsensusModelPlane<pcl::PointXYZ>::Ptr model_p(
+                new pcl::SampleConsensusModelPlane<pcl::PointXYZ>(cloud_filtered_y));
+        pcl::RandomSampleConsensus<pcl::PointXYZ> ransac(model_p);
+        ransac.setDistanceThreshold(0.01);
+        ransac.computeModel();
+        std::vector<int> inliers_indicies;
+        ransac.getInliers(inliers_indicies);
+        pcl::copyPointCloud<pcl::PointXYZ>(*cloud_filtered_y, inliers_indicies, *plane);
+
+        /// Statistical Outlier Removal
+        pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
+        sor.setInputCloud(plane);
+        sor.setMeanK (50);
+        sor.setStddevMulThresh (1);
+        sor.filter (*plane_filtered);
+
+        pcl::toROSMsg(*plane_filtered, out_cloud);
+        cloud_pub.publish(out_cloud);
+    }
+
+    void imageHandler(const sensor_msgs::CameraInfoConstPtr &camInfo_msg,
+                      const sensor_msgs::ImageConstPtr &image_msg) {
         projection_matrix.at<double>(0, 0) = camInfo_msg->K[0];
         projection_matrix.at<double>(0, 1) = camInfo_msg->K[1];
         projection_matrix.at<double>(0, 2) = camInfo_msg->K[2];
@@ -85,22 +148,42 @@ public:
 
         try {
             image_in = cv_bridge::toCvShare(image_msg, "bgr8")->image;
-            boardDetectedInCam = cv::findChessboardCorners(image_in, cv::Size(9, 6),
-                    image_points, cv::CALIB_CB_ADAPTIVE_THRESH+
-                    cv::CALIB_CB_NORMALIZE_IMAGE);
-            ROS_INFO_STREAM("boardDetectedInCam = " << boardDetectedInCam);
-            ROS_INFO_STREAM("No of corners = " << image_points.size());
-            cv::drawChessboardCorners(image_in, cv::Size(9, 6),
-                    image_points, boardDetectedInCam);
-
+            boardDetectedInCam = cv::findChessboardCorners(image_in,
+                                                           cv::Size(6, 9),
+                                                           image_points,
+                                                           cv::CALIB_CB_ADAPTIVE_THRESH+
+                                                           cv::CALIB_CB_NORMALIZE_IMAGE);
+            cv::drawChessboardCorners(image_in,
+                                      cv::Size(6, 9),
+                                      image_points,
+                                      boardDetectedInCam);
+            if(image_points.size() == object_points.size()){
+                cv::solvePnP(object_points, image_points, projection_matrix, distCoeff, rvec, tvec, false, CV_ITERATIVE);
+                projected_points.clear();
+                cv::projectPoints(object_points, rvec, tvec, projection_matrix, distCoeff, projected_points, cv::noArray());
+                for(int i = 0; i < projected_points.size(); i++){
+                    cv::circle(image_in, projected_points[i], 16, cv::Scalar(0, 255, 0), 10, cv::LINE_AA, 0);
+                }
+                cv::Rodrigues(rvec, C_R_W);
+                cv::cv2eigen(C_R_W, c_R_w);
+                c_t_w = Eigen::Vector3d(tvec.at<double>(0),
+                                        tvec.at<double>(1),
+                                        tvec.at<double>(2));
+            }
             cv::resize(image_in, image_resized, cv::Size(), 0.25, 0.25);
             cv::imshow("view", image_resized);
             cv::waitKey(10);
         } catch (cv_bridge::Exception& e) {
             ROS_ERROR("Could not convert from '%s' to 'bgr8'.",
-                    image_msg->encoding.c_str());
+                      image_msg->encoding.c_str());
         }
+    }
 
+    void callback(const sensor_msgs::CameraInfoConstPtr &camInfo_msg,
+                  const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
+                  const sensor_msgs::ImageConstPtr &image_msg){
+        imageHandler(camInfo_msg, image_msg);
+        cloudHandler(cloud_msg);
     }
 };
 
