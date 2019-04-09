@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package( PCL REQUIRED)
 find_package( OpenCV REQUIRED)
+find_package( Ceres REQUIRED)
 
 catkin_package(
   INCLUDE_DIRS
@@ -25,6 +26,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  ${CERES_INCLUDE_DIRS}
 )
 
 
@@ -36,4 +38,5 @@ add_executable(${PROJECT_NAME}_node src/cam_lidar_calib_node.cpp)
 target_link_libraries(${PROJECT_NAME}_node
    ${catkin_LIBRARIES}
    ${OpenCV_LIBS}
+   ${CERES_LIBRARIES}
 )

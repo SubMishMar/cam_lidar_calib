@@ -32,6 +32,8 @@
 
 #include <cv_bridge/cv_bridge.h>
 
+#include <Eigen/Dense>
+
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::CameraInfo,
         sensor_msgs::PointCloud2,
         sensor_msgs::Image> SyncPolicy;
@@ -59,14 +61,22 @@ private:
     cv::Mat C_R_W;
     Eigen::Matrix3d c_R_w;
     Eigen::Vector3d c_t_w;
+    Eigen::Vector3d r3;
+    Eigen::Vector3d r3_old;
+    Eigen::Vector3d Nc;
+
+    std::vector<Eigen::Vector3d> lidar_points;
+    std::vector<std::vector<Eigen::Vector3d> > all_lidar_points;
+    std::vector<Eigen::Vector3d> all_normals;
+
     sensor_msgs::PointCloud2 out_cloud;
 public:
 
 
     camLidarCalib() {
-        caminfo_sub = new message_filters::Subscriber<sensor_msgs::CameraInfo>(nh, "/pylon_camera_node/cam_info", 1);
-        cloud_sub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh, "/velodyne_points", 1);
-        image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, "/pylon_camera_node/image_raw", 1);
+        caminfo_sub = new message_filters::Subscriber<sensor_msgs::CameraInfo>(nh, "/pylon_camera_node/cam_info", 100);
+        cloud_sub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh, "/velodyne_points", 100);
+        image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, "/pylon_camera_node/image_raw", 100);
         sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *caminfo_sub, *cloud_sub, *image_sub);
         sync->registerCallback(boost::bind(&camLidarCalib::callback, this, _1, _2, _3));
         cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("velodyne_points_out", 1);
@@ -79,6 +89,7 @@ public:
         c_R_w = Eigen::Matrix3d::Identity();
         dx = 0.075;
         dy = 0.075;
+
         for(int i = 0; i < 9; i++)
             for (int j = 0; j < 6; j++)
                 object_points.push_back(cv::Point3f(i*dx, j*dy, 0.0));
@@ -123,6 +134,14 @@ public:
         sor.setStddevMulThresh (1);
         sor.filter (*plane_filtered);
 
+        /// Store the points lying in the filtered plane in a vector
+        lidar_points.clear();
+        for (size_t i = 0; i < plane_filtered->points.size(); i++) {
+            double X = plane_filtered->points[i].x;
+            double Y = plane_filtered->points[i].y;
+            double Z = plane_filtered->points[i].z;
+            lidar_points.push_back(Eigen::Vector3d(X, Y, Z));
+        }
         pcl::toROSMsg(*plane_filtered, out_cloud);
         cloud_pub.publish(out_cloud);
     }
@@ -169,6 +188,9 @@ public:
                 c_t_w = Eigen::Vector3d(tvec.at<double>(0),
                                         tvec.at<double>(1),
                                         tvec.at<double>(2));
+
+                r3 = c_R_w.block<3,1>(0,2);
+                Nc = (r3.dot(c_t_w))*r3;
             }
             cv::resize(image_in, image_resized, cv::Size(), 0.25, 0.25);
             cv::imshow("view", image_resized);
@@ -184,6 +206,15 @@ public:
                   const sensor_msgs::ImageConstPtr &image_msg){
         imageHandler(camInfo_msg, image_msg);
         cloudHandler(cloud_msg);
+        if(r3.dot(r3_old) < 0.95){
+            r3_old = r3;
+            all_normals.push_back(Nc);
+            all_lidar_points.push_back(lidar_points);
+            ROS_ASSERT(all_normals.size() == all_lidar_points.size());
+            if(all_normals.size() > 15){
+                /// Start Optimization here
+            }
+        }
     }
 };
 
