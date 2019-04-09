@@ -34,6 +34,11 @@
 
 #include <Eigen/Dense>
 
+#include <calibration_error_term.h>
+
+#include "ceres/ceres.h"
+#include "glog/logging.h"
+
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::CameraInfo,
         sensor_msgs::PointCloud2,
         sensor_msgs::Image> SyncPolicy;
@@ -212,7 +217,46 @@ public:
             all_lidar_points.push_back(lidar_points);
             ROS_ASSERT(all_normals.size() == all_lidar_points.size());
             if(all_normals.size() > 15){
+
+
                 /// Start Optimization here
+
+                Eigen::Matrix3d Rotn;
+                Rotn(0, 0) = 0;
+                Rotn(0, 1) = -1;
+                Rotn(0, 2) = 0;
+                Rotn(1, 0) = 0;
+                Rotn(1, 1) = 0;
+                Rotn(1, 2) = -1;
+                Rotn(2, 0) = 1;
+                Rotn(2, 1) = 0;
+                Rotn(2, 2) = 0;
+                Eigen::Quaterniond quatn(Rotn);
+                Eigen::Vector3d Translation = Eigen::Vector3d(0.5, -0.15, -0.5);
+                ceres::LossFunction* loss_function = NULL;
+                ceres::LocalParameterization* quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
+
+                ceres::Problem problem;
+                for(int i = 0; i< all_normals.size(); i++) {
+                    Eigen::Vector3d normal_i = all_normals[i];
+                    std::vector<Eigen::Vector3d> lidar_points_i
+                    = all_lidar_points[i];
+                    for(int j = 0; j < lidar_points_i.size(); j++){
+                        Eigen::Vector3d lidar_point = lidar_points_i[j];
+                        ceres::CostFunction* cost_function = new
+                                ceres::AutoDiffCostFunction<CalibrationErrorTerm, 1, 3, 4>
+                                        (new CalibrationErrorTerm(lidar_point, normal_i));
+                        problem.AddResidualBlock(cost_function, loss_function, Translation.data(), quatn.coeffs().data());
+                        problem.SetParameterization(quatn.coeffs().data(), quaternion_local_parameterization);
+                    }
+                }
+                ceres::Solver::Options options;
+                options.max_num_iterations = 200;
+                options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+                options.minimizer_progress_to_stdout = true;
+                ceres::Solver::Summary summary;
+                ceres::Solve(options, &problem, &summary);
+                std::cout << summary.FullReport() << '\n';
             }
         }
     }

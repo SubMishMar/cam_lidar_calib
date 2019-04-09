@@ -16,7 +16,7 @@ find_package( OpenCV REQUIRED)
 find_package( Ceres REQUIRED)
 
 catkin_package(
-  INCLUDE_DIRS
+  INCLUDE_DIRS include
   CATKIN_DEPENDS
   DEPENDS PCL
 )
