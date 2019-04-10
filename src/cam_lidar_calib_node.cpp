@@ -79,9 +79,9 @@ public:
 
 
     camLidarCalib() {
-        caminfo_sub = new message_filters::Subscriber<sensor_msgs::CameraInfo>(nh, "/pylon_camera_node/cam_info", 100);
-        cloud_sub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh, "/velodyne_points", 100);
-        image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, "/pylon_camera_node/image_raw", 100);
+        caminfo_sub = new message_filters::Subscriber<sensor_msgs::CameraInfo>(nh, "/pylon_camera_node/cam_info", 1);
+        cloud_sub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh, "/velodyne_points", 1);
+        image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, "/pylon_camera_node/image_raw", 1);
         sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *caminfo_sub, *cloud_sub, *image_sub);
         sync->registerCallback(boost::bind(&camLidarCalib::callback, this, _1, _2, _3));
         cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("velodyne_points_out", 1);
@@ -217,20 +217,20 @@ public:
             all_lidar_points.push_back(lidar_points);
             ROS_ASSERT(all_normals.size() == all_lidar_points.size());
             if(all_normals.size() > 15){
-
-
+                ROS_INFO_STREAM("No of views: " << all_normals.size());
+                ROS_INFO_STREAM("Starting optimization...");
                 /// Start Optimization here
 
                 Eigen::Matrix3d Rotn;
-                Rotn(0, 0) = 0;
-                Rotn(0, 1) = -1;
+                Rotn(0, 0) = 1;
+                Rotn(0, 1) = 0;
                 Rotn(0, 2) = 0;
                 Rotn(1, 0) = 0;
                 Rotn(1, 1) = 0;
-                Rotn(1, 2) = -1;
-                Rotn(2, 0) = 1;
+                Rotn(1, 2) = 1;
+                Rotn(2, 0) = 0;
                 Rotn(2, 1) = 0;
-                Rotn(2, 2) = 0;
+                Rotn(2, 2) = 1;
                 Eigen::Quaterniond quatn(Rotn);
                 Eigen::Vector3d Translation = Eigen::Vector3d(0.5, -0.15, -0.5);
                 ceres::LossFunction* loss_function = NULL;
@@ -257,6 +257,8 @@ public:
                 ceres::Solver::Summary summary;
                 ceres::Solve(options, &problem, &summary);
                 std::cout << summary.FullReport() << '\n';
+                std::cout << "Rotation = " << quatn.normalized().toRotationMatrix() << std::endl;
+                std::cout << "Translation = " << Translation << std::endl;
             }
         }
     }
