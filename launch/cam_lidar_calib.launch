@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <launch>
+  <param name = "dx" type="double" value="0.075"/>
+  <param name = "dy" type="double" value="0.075"/>
+  <param name = "checkerboard_rows" type = "int" value = "9" />
+  <param name = "checkerboard_cols" type = "int" value = "6" />
+  <param name = "result_file" type="string" value="$(find cam_lidar_calib)/result/C_T_L.txt"/>
   <param name ="/use_sim_time" value="true"/>
   <node  pkg="cam_lidar_calib" name="cam_lidar_calib" type="cam_lidar_calib_node" output="screen">
   </node>

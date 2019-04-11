@@ -1,3 +1,7 @@
+//
+// Created by usl on 4/6/19.
+//
+
 #include "ros/ros.h"
 #include "sensor_msgs/PointCloud2.h"
 #include "sensor_msgs/CameraInfo.h"
@@ -39,6 +43,9 @@
 #include "ceres/ceres.h"
 #include "glog/logging.h"
 
+#include <fstream>
+#include <iostream>
+
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::CameraInfo,
         sensor_msgs::PointCloud2,
         sensor_msgs::Image> SyncPolicy;
@@ -61,7 +68,8 @@ private:
     std::vector<cv::Point3f> object_points;
     std::vector<cv::Point2f> projected_points;
     bool boardDetectedInCam;
-    float dx, dy;
+    double dx, dy;
+    int checkerboard_rows, checkerboard_cols;
     cv::Mat tvec, rvec;
     cv::Mat C_R_W;
     Eigen::Matrix3d c_R_w;
@@ -75,6 +83,7 @@ private:
     std::vector<Eigen::Vector3d> all_normals;
 
     sensor_msgs::PointCloud2 out_cloud;
+    std::string result_str;
 public:
 
 
@@ -92,12 +101,33 @@ public:
         rvec = cv::Mat::zeros(3, 1, CV_64F);
         C_R_W = cv::Mat::eye(3, 3, CV_64F);
         c_R_w = Eigen::Matrix3d::Identity();
-        dx = 0.075;
-        dy = 0.075;
 
-        for(int i = 0; i < 9; i++)
-            for (int j = 0; j < 6; j++)
-                object_points.push_back(cv::Point3f(i*dx, j*dy, 0.0));
+        dx = readParam<double>(nh, "dx");
+        dy = readParam<double>(nh, "dy");
+        checkerboard_rows = readParam<int>(nh, "checkerboard_rows");
+        checkerboard_cols = readParam<int>(nh, "checkerboard_cols");
+
+        for(int i = 0; i < checkerboard_rows; i++)
+            for (int j = 0; j < checkerboard_cols; j++)
+                object_points.emplace_back(cv::Point3f(i*dx, j*dy, 0.0));
+
+        result_str = readParam<std::string>(nh, "result_file");
+    }
+
+    template <typename T>
+    T readParam(ros::NodeHandle &n, std::string name)
+    {
+        T ans;
+        if (n.getParam(name, ans))
+        {
+            ROS_INFO_STREAM("Loaded " << name << ": " << ans);
+        }
+        else
+        {
+            ROS_ERROR_STREAM("Failed to load " << name);
+            n.shutdown();
+        }
+        return ans;
     }
 
     void cloudHandler(const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
@@ -173,12 +203,12 @@ public:
         try {
             image_in = cv_bridge::toCvShare(image_msg, "bgr8")->image;
             boardDetectedInCam = cv::findChessboardCorners(image_in,
-                                                           cv::Size(6, 9),
+                                                           cv::Size(checkerboard_cols, checkerboard_rows),
                                                            image_points,
                                                            cv::CALIB_CB_ADAPTIVE_THRESH+
                                                            cv::CALIB_CB_NORMALIZE_IMAGE);
             cv::drawChessboardCorners(image_in,
-                                      cv::Size(6, 9),
+                                      cv::Size(checkerboard_cols, checkerboard_rows),
                                       image_points,
                                       boardDetectedInCam);
             if(image_points.size() == object_points.size()){
@@ -211,16 +241,18 @@ public:
                   const sensor_msgs::ImageConstPtr &image_msg){
         imageHandler(camInfo_msg, image_msg);
         cloudHandler(cloud_msg);
-        if(r3.dot(r3_old) < 0.95){
+        if(r3.dot(r3_old) < 0.9){
             r3_old = r3;
             all_normals.push_back(Nc);
             all_lidar_points.push_back(lidar_points);
             ROS_ASSERT(all_normals.size() == all_lidar_points.size());
-            if(all_normals.size() > 15){
-                ROS_INFO_STREAM("No of views: " << all_normals.size());
+            ROS_INFO_STREAM("View: " << all_normals.size());
+            if(all_normals.size() >= 10){
                 ROS_INFO_STREAM("Starting optimization...");
+
                 /// Start Optimization here
 
+                /// Step 1: Initialization
                 Eigen::Matrix3d Rotn;
                 Rotn(0, 0) = 1;
                 Rotn(0, 1) = 0;
@@ -232,10 +264,13 @@ public:
                 Rotn(2, 1) = 0;
                 Rotn(2, 2) = 1;
                 Eigen::Quaterniond quatn(Rotn);
-                Eigen::Vector3d Translation = Eigen::Vector3d(0.5, -0.15, -0.5);
+                Eigen::Vector3d Translation = Eigen::Vector3d(0, 0, 0);
+
+                /// Step2: Defining the Loss function (Can be NONE)
                 ceres::LossFunction* loss_function = NULL;
                 ceres::LocalParameterization* quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
 
+                /// Step 3: Form the Optimization Problem
                 ceres::Problem problem;
                 for(int i = 0; i< all_normals.size(); i++) {
                     Eigen::Vector3d normal_i = all_normals[i];
@@ -250,6 +285,8 @@ public:
                         problem.SetParameterization(quatn.coeffs().data(), quaternion_local_parameterization);
                     }
                 }
+
+                /// Step 4: Solve it
                 ceres::Solver::Options options;
                 options.max_num_iterations = 200;
                 options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
@@ -257,8 +294,22 @@ public:
                 ceres::Solver::Summary summary;
                 ceres::Solve(options, &problem, &summary);
                 std::cout << summary.FullReport() << '\n';
-                std::cout << "Rotation = " << quatn.normalized().toRotationMatrix() << std::endl;
-                std::cout << "Translation = " << Translation << std::endl;
+
+                /// Printing and Storing to a file
+                Rotn = quatn.normalized().toRotationMatrix();
+                Eigen::MatrixXd C_T_L(3, 4);
+                C_T_L.block(0, 0, 3, 3) = Rotn;
+                C_T_L.block(0, 3, 3, 1) = Translation;
+
+                std::cout << "C_T_L = " << std::endl;
+                std::cout << C_T_L << std::endl;
+
+                std::ofstream results;
+                results.open(result_str);
+                results << C_T_L;
+                results.close();
+
+                ros::shutdown();
             }
         }
     }

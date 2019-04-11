@@ -32,7 +32,7 @@ include_directories(
 
 add_executable(${PROJECT_NAME}_node src/cam_lidar_calib_node.cpp)
 
-
+add_executable(cam_lidar_proj_node src/cam_lidar_proj_node.cpp)
 
 
 target_link_libraries(${PROJECT_NAME}_node
@@ -40,3 +40,8 @@ target_link_libraries(${PROJECT_NAME}_node
    ${OpenCV_LIBS}
    ${CERES_LIBRARIES}
 )
+
+target_link_libraries(cam_lidar_proj_node
+        ${catkin_LIBRARIES}
+        ${OpenCV_LIBS}
+        )

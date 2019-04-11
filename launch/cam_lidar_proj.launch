@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<launch>
+  <param name ="/use_sim_time" value="true"/>
+  <param name = "result_file" type="string" value="$(find cam_lidar_calib)/result/C_T_L.txt"/>
+  <node  pkg="cam_lidar_calib" name="cam_lidar_proj" type="cam_lidar_proj_node" output="screen">
+  </node>
+</launch>
