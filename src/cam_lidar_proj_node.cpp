@@ -28,6 +28,9 @@
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+#include <iostream>
+#include <fstream>
+
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::CameraInfo,
         sensor_msgs::PointCloud2,
         sensor_msgs::Image> SyncPolicy;
@@ -42,7 +45,7 @@ private:
     message_filters::Subscriber<sensor_msgs::Image> *image_sub;
     message_filters::Synchronizer<SyncPolicy> *sync;
 
-    Eigen::MatrixXd *C_T_L;
+    Eigen::MatrixXd C_T_L;
 
     std::vector<cv::Point3d> lidar_pts_in_fov;
 
@@ -58,15 +61,22 @@ public:
         sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *camInfo_sub, *cloud_sub, *image_sub);
         sync->registerCallback(boost::bind(&lidarImageProjection::callback, this, _1, _2, _3));
 
-        C_T_L = new Eigen::MatrixXd(3, 4);
+        C_T_L = Eigen::MatrixXd(3, 4);
 
         result_str = readParam<std::string>(nh, "result_file");
 
-        std::cout << result_str << std::endl;
-
-        *C_T_L << 0.000427728,   -0.999967, -0.00808454,   0.0511466,
-                -0.00721066,  0.00808124,   -0.999941,  -0.0540399,
-                0.999974, 0.000485998, -0.00720697,   -0.292197;
+        std::ifstream myReadFile(result_str.c_str());
+        std::string word;
+        int i = 0;
+        int j = 0;
+        while (myReadFile >> word){
+            C_T_L(i, j) = atof(word.c_str());
+            j++;
+            if(j>3) {
+                j = 0;
+                i++;
+            }
+        }
     }
 
     template <typename T>
@@ -122,7 +132,7 @@ public:
             pointCloud_L[3] = 1;
 
             Eigen::Vector3d pointCloud_C;
-            pointCloud_C = *C_T_L*pointCloud_L;
+            pointCloud_C = C_T_L*pointCloud_L;
 
 
             double X = pointCloud_C[0];
