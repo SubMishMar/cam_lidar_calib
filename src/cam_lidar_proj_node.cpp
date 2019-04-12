@@ -245,7 +245,7 @@ public:
             for(size_t i = 0; i < in_cloud->points.size(); i++) {
 
                 // Reject points behind the LiDAR
-                if(in_cloud->points[i].x < 0)
+                if(in_cloud->points[i].x < 0 || in_cloud->points[i].x > 4.5)
                     continue;
 
                 Eigen::Vector4d pointCloud_L;
@@ -276,25 +276,24 @@ public:
                                                        pointCloud_L[2]));
             }
             cv::projectPoints(objectPoints, rvec, tvec, projection_matrix, distCoeff, imagePoints, cv::noArray());
-            pcl::PointCloud<pcl::PointXYZRGB> out_cloud_pcl;
-            out_cloud_pcl.resize(objectPoints.size());
+        }
+        pcl::PointCloud<pcl::PointXYZRGB> out_cloud_pcl;
+        out_cloud_pcl.resize(objectPoints.size());
 
-            for(size_t i = 0; i < objectPoints.size(); i++) {
-                cv::Vec3b rgb = atf(image_in, imagePoints[i]);
-                pcl::PointXYZRGB pt_rgb(rgb.val[2], rgb.val[1], rgb.val[0]);
-                pt_rgb.x = objectPoints[i].x;
-                pt_rgb.y = objectPoints[i].y;
-                pt_rgb.z = objectPoints[i].z;
-                out_cloud_pcl.push_back(pt_rgb);
-            }
-
-            pcl::toROSMsg(out_cloud_pcl, out_cloud_ros);
-            out_cloud_ros.header.frame_id = cloud_msg->header.frame_id;
-            out_cloud_ros.header.stamp = cloud_msg->header.stamp;
-
-            cloud_pub.publish(out_cloud_ros);
+        for(size_t i = 0; i < objectPoints.size(); i++) {
+            cv::Vec3b rgb = atf(image_in, imagePoints[i]);
+            pcl::PointXYZRGB pt_rgb(rgb.val[2], rgb.val[1], rgb.val[0]);
+            pt_rgb.x = objectPoints[i].x;
+            pt_rgb.y = objectPoints[i].y;
+            pt_rgb.z = objectPoints[i].z;
+            out_cloud_pcl.push_back(pt_rgb);
         }
 
+        pcl::toROSMsg(out_cloud_pcl, out_cloud_ros);
+        out_cloud_ros.header.frame_id = cloud_msg->header.frame_id;
+        out_cloud_ros.header.stamp = cloud_msg->header.stamp;
+
+        cloud_pub.publish(out_cloud_ros);
         for(size_t i = 0; i < imagePoints.size(); i++)
             cv::circle(image_in, imagePoints[i], 4, CV_RGB(0, 255, 0), -1, 8, 0);
 

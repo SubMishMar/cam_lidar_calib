@@ -43,6 +43,8 @@
 #include "ceres/ceres.h"
 #include "glog/logging.h"
 
+#include "ceres/covariance.h"
+
 #include <fstream>
 #include <iostream>
 
@@ -272,6 +274,8 @@ public:
 
                 /// Step 3: Form the Optimization Problem
                 ceres::Problem problem;
+                problem.AddParameterBlock(Translation.data(), 3);
+                problem.AddParameterBlock(quatn.coeffs().data(), 4);
                 for(int i = 0; i< all_normals.size(); i++) {
                     Eigen::Vector3d normal_i = all_normals[i];
                     std::vector<Eigen::Vector3d> lidar_points_i
@@ -283,6 +287,7 @@ public:
                                         (new CalibrationErrorTerm(lidar_point, normal_i));
                         problem.AddResidualBlock(cost_function, loss_function, Translation.data(), quatn.coeffs().data());
                         problem.SetParameterization(quatn.coeffs().data(), quaternion_local_parameterization);
+
                     }
                 }
 
@@ -294,6 +299,27 @@ public:
                 ceres::Solver::Summary summary;
                 ceres::Solve(options, &problem, &summary);
                 std::cout << summary.FullReport() << '\n';
+
+                /// Step 5: Covariance Estimation (TODO)
+                ceres::Covariance::Options options_cov;
+                ceres::Covariance covariance(options_cov);
+                std::vector<std::pair<const double*, const double*> > covariance_blocks;
+                covariance_blocks.push_back(std::make_pair(Translation.data(), Translation.data()));
+                covariance_blocks.push_back(std::make_pair(quatn.coeffs().data(), quatn.coeffs().data()));
+                covariance_blocks.push_back(std::make_pair(Translation.data(), quatn.coeffs().data()));
+                covariance.Compute(covariance_blocks, &problem);
+                double covariance_xx[3*3];
+                double covariance_yy[4*4];
+                double covariance_xy[3*4];
+                covariance.GetCovarianceBlock(Translation.data(),
+                        Translation.data(),
+                        covariance_xx);
+                covariance.GetCovarianceBlock(quatn.coeffs().data(),
+                        quatn.coeffs().data(),
+                        covariance_yy);
+                covariance.GetCovarianceBlock(Translation.data(),
+                        quatn.coeffs().data(),
+                        covariance_xy);
 
                 /// Printing and Storing to a file
                 Rotn = quatn.normalized().toRotationMatrix();

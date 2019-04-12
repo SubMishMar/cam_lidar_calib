@@ -25,8 +25,10 @@ public:
                      T* residual) const {
         Eigen::Map<const Eigen::Matrix<T, 3, 1> > c_t_l(c_t_l_ptr);
         Eigen::Map<const Eigen::Quaternion<T> > c_q_l(c_q_l_ptr);
-        residual[0] = (normal_to_plane_.template cast<T>()).normalized().dot(c_q_l.normalized()
-                *(laser_point_.template cast<T>()) + c_t_l) -  (normal_to_plane_.template cast<T>()).norm();
+        residual[0] =
+                (normal_to_plane_.template cast<T>()).normalized().dot(c_q_l.normalized()
+                *(laser_point_.template cast<T>()) + c_t_l)
+                -  (normal_to_plane_.template cast<T>()).norm();
         return true;
     }
 };
