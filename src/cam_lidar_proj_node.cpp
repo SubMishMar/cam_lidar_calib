@@ -59,10 +59,10 @@ private:
     message_filters::Synchronizer<SyncPolicy> *sync;
 
     ros::Publisher cloud_pub;
+    ros::Publisher image_pub;
 
     Eigen::MatrixXd C_T_L;
     cv::Mat c_R_l, tvec;
-    std::vector<cv::Point3d> lidar_pts_in_fov;
 
     std::string result_str;
 
@@ -82,6 +82,7 @@ public:
         cloud_sub =  new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh, "/velodyne_points", 1);
         image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, "/pylon_camera_node/image_raw", 1);
         cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/velodyne_out_cloud", 1);
+        image_pub = nh.advertise<sensor_msgs::Image>("/projected_image", 1);
 
         sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *camInfo_sub, *cloud_sub, *image_sub);
         sync->registerCallback(boost::bind(&lidarImageProjection::callback, this, _1, _2, _3));
@@ -297,19 +298,19 @@ public:
         for(size_t i = 0; i < imagePoints.size(); i++)
             cv::circle(image_in, imagePoints[i], 4, CV_RGB(0, 255, 0), -1, 8, 0);
 
-        cv::Mat image_resized;
-        cv::resize(image_in, image_resized, cv::Size(), 0.25, 0.25);
-        cv::imshow("view", image_resized);
-        cv::waitKey(10);
+        sensor_msgs::ImagePtr msg =
+                cv_bridge::CvImage(std_msgs::Header(), "bgr8", image_in).toImageMsg();
+        image_pub.publish(msg);
+//        cv::Mat image_resized;
+//        cv::resize(image_in, image_resized, cv::Size(), 0.25, 0.25);
+//        cv::imshow("view", image_resized);
+//        cv::waitKey(10);
     }
 };
 
 int main(int argc, char** argv) {
     ros::init(argc, argv, "cam_lidar_proj");
-    cv::namedWindow("view");
-    cv::startWindowThread();
     lidarImageProjection lip;
     ros::spin();
-    cv::destroyWindow("view");
     return 0;
 }
