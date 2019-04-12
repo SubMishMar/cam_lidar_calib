@@ -172,6 +172,35 @@ public:
         return plane_filtered;
     }
 
+    cv::Vec3b atf(cv::Mat rgb, cv::Point2d xy_f)
+    {
+        cv::Vec3i color_i;
+        color_i.val[0] = color_i.val[1] = color_i.val[2] = 0;
+
+        int x = xy_f.x;
+        int y = xy_f.y;
+
+        for (int row = 0; row <= 1; row++)
+        {
+            for (int col = 0; col <= 1; col++)
+            {
+                if((x+col)< rgb.cols && (y+row) < rgb.rows) {
+                    cv::Vec3b c = rgb.at<cv::Vec3b>(cv::Point(x + col, y + row));
+                    for (int i = 0; i < 3; i++){
+                        color_i.val[i] += c.val[i];
+                    }
+                }
+            }
+        }
+
+        cv::Vec3b color;
+        for (int i = 0; i < 3; i++)
+        {
+            color.val[i] = color_i.val[i] / 4;
+        }
+        return color;
+    }
+
     void callback(const sensor_msgs::CameraInfoConstPtr &camInfo_msg,
                   const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
                   const sensor_msgs::ImageConstPtr &image_msg) {
@@ -182,8 +211,8 @@ public:
 
 
         double fov_x, fov_y;
-        fov_x = 2*atan2(camInfo_msg->height, 2*camInfo_msg->P[0])*180/CV_PI;
-        fov_y = 2*atan2(camInfo_msg->width, 2*camInfo_msg->P[5])*180/CV_PI;
+        fov_x = 2*atan2(camInfo_msg->height, 2*camInfo_msg->K[0])*180/CV_PI;
+        fov_y = 2*atan2(camInfo_msg->width, 2*camInfo_msg->K[4])*180/CV_PI;
 
         size_t k = 0;
         for(size_t i = 0 ; i < 3; i++)
@@ -250,11 +279,12 @@ public:
             out_cloud_pcl.resize(objectPoints.size());
 
             for(size_t i = 0; i < objectPoints.size(); i++) {
-                out_cloud_pcl.points[i].x = objectPoints[i].x;
-                out_cloud_pcl.points[i].y = objectPoints[i].y;
-                out_cloud_pcl.points[i].z = objectPoints[i].z;
-//                uint8_t R = image_in.at<cv::Vec3b>(cv::Point(imagePoints[i].y, imagePoints[i].x))[0];
-//                out_cloud_pcl.points[i].r = image_in.at<cv::Vec3b>(cv::Point(imagePoints[i].x, imagePoints[i].y))[0];
+                cv::Vec3b rgb = atf(image_in, imagePoints[i]);
+                pcl::PointXYZRGB pt_rgb(rgb.val[2], rgb.val[1], rgb.val[0]);
+                pt_rgb.x = objectPoints[i].x;
+                pt_rgb.y = objectPoints[i].y;
+                pt_rgb.z = objectPoints[i].z;
+                out_cloud_pcl.push_back(pt_rgb);
             }
 
             pcl::toROSMsg(out_cloud_pcl, out_cloud_ros);
