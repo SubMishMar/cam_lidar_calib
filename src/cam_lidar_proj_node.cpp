@@ -76,7 +76,7 @@ private:
     cv::Mat projection_matrix;
     cv::Mat distCoeff;
 
-    std::vector<cv::Point3d> objectPoints;
+    std::vector<cv::Point3d> objectPoints_L, objectPoints_C;
     std::vector<cv::Point2d> imagePoints;
 
     sensor_msgs::PointCloud2 out_cloud_ros;
@@ -232,7 +232,8 @@ public:
                   const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
                   const sensor_msgs::ImageConstPtr &image_msg) {
         lidar_frameId = cloud_msg->header.frame_id;
-        objectPoints.clear();
+        objectPoints_L.clear();
+        objectPoints_C.clear();
         imagePoints.clear();
         publishTransforms();
         cv::Mat image_in = cv_bridge::toCvShare(image_msg, "bgr8")->image;
@@ -251,17 +252,23 @@ public:
         for(size_t i = 0; i < 4; i++)
             distCoeff.at<double>(i) = camInfo_msg->D[i];
 
+        double max_range, min_range;
+        max_range = -INFINITY;
+        min_range = INFINITY;
 
         pcl::PointCloud<pcl::PointXYZ>::Ptr in_cloud(new pcl::PointCloud<pcl::PointXYZ>);
         if(project_only_plane) {
             in_cloud = planeFilter(cloud_msg);
 
             for(size_t i = 0; i < in_cloud->points.size(); i++) {
-                objectPoints.push_back(cv::Point3d(in_cloud->points[i].x, in_cloud->points[i].y, in_cloud->points[i].z));
+                objectPoints_L.push_back(cv::Point3d(in_cloud->points[i].x, in_cloud->points[i].y, in_cloud->points[i].z));
             }
 
-            cv::projectPoints(objectPoints, rvec, tvec, projection_matrix, distCoeff, imagePoints, cv::noArray());
+            cv::projectPoints(objectPoints_L, rvec, tvec, projection_matrix, distCoeff, imagePoints, cv::noArray());
         } else {
+
+
+
             pcl::PCLPointCloud2 *cloud_in = new pcl::PCLPointCloud2;
             pcl_conversions::toPCL(*cloud_msg, *cloud_in);
             pcl::fromPCLPointCloud2(*cloud_in, *in_cloud);
@@ -269,7 +276,7 @@ public:
             for(size_t i = 0; i < in_cloud->points.size(); i++) {
 
                 // Reject points behind the LiDAR(and also beyond certain distance)
-                if(in_cloud->points[i].x < 0 || in_cloud->points[i].x > 4.5)
+                if(in_cloud->points[i].x < 0 /*|| in_cloud->points[i].x > 5*/)
                     continue;
 
                 Eigen::Vector4d pointCloud_L;
@@ -295,20 +302,30 @@ public:
                 if(Yangle < -fov_y/2 || Yangle > fov_y/2)
                     continue;
 
-                objectPoints.push_back(cv::Point3d(pointCloud_L[0], pointCloud_L[1], pointCloud_L[2]));
+                double range = sqrt(X*X + Y*Y + Z*Z);
+
+                if(range > max_range) {
+                    max_range = range;
+                }
+                if(range < min_range) {
+                    min_range = range;
+                }
+
+                objectPoints_L.push_back(cv::Point3d(pointCloud_L[0], pointCloud_L[1], pointCloud_L[2]));
+                objectPoints_C.push_back(cv::Point3d(X, Y, Z));
             }
-            cv::projectPoints(objectPoints, rvec, tvec, projection_matrix, distCoeff, imagePoints, cv::noArray());
+            cv::projectPoints(objectPoints_L, rvec, tvec, projection_matrix, distCoeff, imagePoints, cv::noArray());
         }
 
         pcl::PointCloud<pcl::PointXYZRGB> out_cloud_pcl;
-        out_cloud_pcl.resize(objectPoints.size());
+        out_cloud_pcl.resize(objectPoints_L.size());
 
-        for(size_t i = 0; i < objectPoints.size(); i++) {
+        for(size_t i = 0; i < objectPoints_L.size(); i++) {
             cv::Vec3b rgb = atf(image_in, imagePoints[i]);
             pcl::PointXYZRGB pt_rgb(rgb.val[2], rgb.val[1], rgb.val[0]);
-            pt_rgb.x = objectPoints[i].x;
-            pt_rgb.y = objectPoints[i].y;
-            pt_rgb.z = objectPoints[i].z;
+            pt_rgb.x = objectPoints_L[i].x;
+            pt_rgb.y = objectPoints_L[i].y;
+            pt_rgb.z = objectPoints_L[i].z;
             out_cloud_pcl.push_back(pt_rgb);
         }
 
@@ -317,9 +334,16 @@ public:
         out_cloud_ros.header.stamp = cloud_msg->header.stamp;
 
         cloud_pub.publish(out_cloud_ros);
-        for(size_t i = 0; i < imagePoints.size(); i++)
-            cv::circle(image_in, imagePoints[i], 4, CV_RGB(0, 255, 0), -1, 8, 0);
-
+        for(size_t i = 0; i < imagePoints.size(); i++) {
+            double X = objectPoints_C[i].x;
+            double Y = objectPoints_C[i].y;
+            double Z = objectPoints_C[i].z;
+            double range = sqrt(X*X + Y*Y + Z*Z);
+            double red_field = 255*(range - min_range)/(max_range - min_range);
+            double green_field = 255*(max_range - range)/(max_range - min_range);
+            cv::circle(image_in, imagePoints[i], 4,
+                    CV_RGB(red_field, green_field, 0), -1, 8, 0);
+        }
         sensor_msgs::ImagePtr msg =
                 cv_bridge::CvImage(std_msgs::Header(), "bgr8", image_in).toImageMsg();
         image_pub.publish(msg);
