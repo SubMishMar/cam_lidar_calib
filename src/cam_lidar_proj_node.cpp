@@ -41,6 +41,9 @@
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core/eigen.hpp>
 
+#include <tf/transform_broadcaster.h>
+#include <tf_conversions/tf_eigen.h>
+
 #include <iostream>
 #include <fstream>
 
@@ -61,10 +64,13 @@ private:
     ros::Publisher cloud_pub;
     ros::Publisher image_pub;
 
-    Eigen::MatrixXd C_T_L;
     cv::Mat c_R_l, tvec;
-
+    cv::Mat rvec;
     std::string result_str;
+    Eigen::Matrix4d C_T_L, L_T_C;
+    Eigen::Matrix3d C_R_L, L_R_C;
+    Eigen::Quaterniond C_R_L_quatn, L_R_C_quatn;
+    Eigen::Vector3d C_t_L, L_t_C;
 
     bool project_only_plane;
     cv::Mat projection_matrix;
@@ -74,6 +80,8 @@ private:
     std::vector<cv::Point2d> imagePoints;
 
     sensor_msgs::PointCloud2 out_cloud_ros;
+
+    std::string lidar_frameId;
 
 public:
     lidarImageProjection() {
@@ -87,7 +95,7 @@ public:
         sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *camInfo_sub, *cloud_sub, *image_sub);
         sync->registerCallback(boost::bind(&lidarImageProjection::callback, this, _1, _2, _3));
 
-        C_T_L = Eigen::MatrixXd(3, 4);
+        C_T_L = Eigen::Matrix4d::Identity();
         c_R_l = cv::Mat::zeros(3, 3, CV_64F);
         tvec = cv::Mat::zeros(3, 1, CV_64F);
 
@@ -109,9 +117,17 @@ public:
                 i++;
             }
         }
-        Eigen::Matrix3d C_R_L = C_T_L.block(0, 0, 3, 3);
-        Eigen::Vector3d C_t_L = C_T_L.block(0, 3, 3, 1);
+        L_T_C = C_T_L.inverse();
+        C_R_L = C_T_L.block(0, 0, 3, 3);
+        C_t_L = C_T_L.block(0, 3, 3, 1);
+
+        L_R_C = L_T_C.block(0, 0, 3, 3);
+        L_t_C = L_T_C.block(0, 3, 3, 1);
+
         cv::eigen2cv(C_R_L, c_R_l);
+        C_R_L_quatn = Eigen::Quaterniond(C_R_L);
+        L_R_C_quatn = Eigen::Quaterniond(L_R_C);
+        cv::Rodrigues(c_R_l, rvec);
         cv::eigen2cv(C_t_L, tvec);
     }
 
@@ -202,12 +218,23 @@ public:
         return color;
     }
 
+    void publishTransforms() {
+        static tf::TransformBroadcaster br;
+        tf::Transform transform;
+        tf::Quaternion q;
+        tf::quaternionEigenToTF(L_R_C_quatn, q);
+        transform.setOrigin(tf::Vector3(L_t_C(0), L_t_C(1), L_t_C(2)));
+        transform.setRotation(q);
+        br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), lidar_frameId, "camera"));
+    }
+
     void callback(const sensor_msgs::CameraInfoConstPtr &camInfo_msg,
                   const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
                   const sensor_msgs::ImageConstPtr &image_msg) {
+        lidar_frameId = cloud_msg->header.frame_id;
         objectPoints.clear();
         imagePoints.clear();
-
+        publishTransforms();
         cv::Mat image_in = cv_bridge::toCvShare(image_msg, "bgr8")->image;
 
 
@@ -224,8 +251,6 @@ public:
         for(size_t i = 0; i < 4; i++)
             distCoeff.at<double>(i) = camInfo_msg->D[i];
 
-        cv::Mat rvec;
-        cv::Rodrigues(c_R_l, rvec);
 
         pcl::PointCloud<pcl::PointXYZ>::Ptr in_cloud(new pcl::PointCloud<pcl::PointXYZ>);
         if(project_only_plane) {
@@ -234,8 +259,7 @@ public:
             for(size_t i = 0; i < in_cloud->points.size(); i++) {
                 objectPoints.push_back(cv::Point3d(in_cloud->points[i].x, in_cloud->points[i].y, in_cloud->points[i].z));
             }
-            cv::Mat rvec;
-            cv::Rodrigues(c_R_l, rvec);
+
             cv::projectPoints(objectPoints, rvec, tvec, projection_matrix, distCoeff, imagePoints, cv::noArray());
         } else {
             pcl::PCLPointCloud2 *cloud_in = new pcl::PCLPointCloud2;
@@ -245,7 +269,7 @@ public:
             for(size_t i = 0; i < in_cloud->points.size(); i++) {
 
                 // Reject points behind the LiDAR
-                if(in_cloud->points[i].x < 0 || in_cloud->points[i].x > 4.5)
+                if(in_cloud->points[i].x < 0)
                     continue;
 
                 Eigen::Vector4d pointCloud_L;
@@ -255,7 +279,7 @@ public:
                 pointCloud_L[3] = 1;
 
                 Eigen::Vector3d pointCloud_C;
-                pointCloud_C = C_T_L*pointCloud_L;
+                pointCloud_C = C_T_L.block(0, 0, 3, 4)*pointCloud_L;
 
 
                 double X = pointCloud_C[0];
@@ -271,12 +295,11 @@ public:
                 if(Yangle < -fov_y/2 || Yangle > fov_y/2)
                     continue;
 
-                objectPoints.push_back(cv::Point3d(pointCloud_L[0],
-                                                       pointCloud_L[1],
-                                                       pointCloud_L[2]));
+                objectPoints.push_back(cv::Point3d(pointCloud_L[0], pointCloud_L[1], pointCloud_L[2]));
             }
             cv::projectPoints(objectPoints, rvec, tvec, projection_matrix, distCoeff, imagePoints, cv::noArray());
         }
+
         pcl::PointCloud<pcl::PointXYZRGB> out_cloud_pcl;
         out_cloud_pcl.resize(objectPoints.size());
 

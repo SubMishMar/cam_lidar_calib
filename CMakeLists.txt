@@ -9,6 +9,8 @@ find_package(catkin REQUIRED COMPONENTS
   velodyne_pointcloud
   message_filters
   cv_bridge
+  tf
+  tf_conversions
 )
 
 find_package( PCL REQUIRED)
