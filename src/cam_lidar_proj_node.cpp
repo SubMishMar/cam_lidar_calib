@@ -268,8 +268,8 @@ public:
 
             for(size_t i = 0; i < in_cloud->points.size(); i++) {
 
-                // Reject points behind the LiDAR
-                if(in_cloud->points[i].x < 0)
+                // Reject points behind the LiDAR(and also beyond certain distance)
+                if(in_cloud->points[i].x < 0 || in_cloud->points[i].x > 4.5)
                     continue;
 
                 Eigen::Vector4d pointCloud_L;
