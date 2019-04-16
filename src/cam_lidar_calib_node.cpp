@@ -72,6 +72,7 @@ private:
     bool boardDetectedInCam;
     double dx, dy;
     int checkerboard_rows, checkerboard_cols;
+    int min_points_on_plane;
     cv::Mat tvec, rvec;
     cv::Mat C_R_W;
     Eigen::Matrix3d c_R_w;
@@ -108,6 +109,7 @@ public:
         dy = readParam<double>(nh, "dy");
         checkerboard_rows = readParam<int>(nh, "checkerboard_rows");
         checkerboard_cols = readParam<int>(nh, "checkerboard_cols");
+        min_points_on_plane = readParam<int>(nh, "min_points_on_plane");
 
         for(int i = 0; i < checkerboard_rows; i++)
             for (int j = 0; j < checkerboard_cols; j++)
@@ -146,7 +148,7 @@ public:
         pcl::PassThrough<pcl::PointXYZ> pass_x;
         pass_x.setInputCloud(in_cloud);
         pass_x.setFilterFieldName("x");
-        pass_x.setFilterLimits(0.0, 5.0);
+        pass_x.setFilterLimits(0.0, 6.0);
         pass_x.filter(*cloud_filtered_x);
         pcl::PassThrough<pcl::PointXYZ> pass_y;
         pass_y.setInputCloud(cloud_filtered_x);
@@ -240,103 +242,110 @@ public:
 
     void callback(const sensor_msgs::CameraInfoConstPtr &camInfo_msg,
                   const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
-                  const sensor_msgs::ImageConstPtr &image_msg){
+                  const sensor_msgs::ImageConstPtr &image_msg) {
         imageHandler(camInfo_msg, image_msg);
         cloudHandler(cloud_msg);
-        if(r3.dot(r3_old) < 0.9){
-            r3_old = r3;
-            all_normals.push_back(Nc);
-            all_lidar_points.push_back(lidar_points);
-            ROS_ASSERT(all_normals.size() == all_lidar_points.size());
-            ROS_INFO_STREAM("View: " << all_normals.size());
-            if(all_normals.size() >= 10){
-                ROS_INFO_STREAM("Starting optimization...");
+        if (lidar_points.size() > min_points_on_plane && boardDetectedInCam) {
+            if (r3.dot(r3_old) < 0.9) {
+                r3_old = r3;
+                all_normals.push_back(Nc);
+                all_lidar_points.push_back(lidar_points);
+                ROS_ASSERT(all_normals.size() == all_lidar_points.size());
+                ROS_INFO_STREAM("View: " << all_normals.size());
+                if (all_normals.size() >= 10) {
+                    ROS_INFO_STREAM("Starting optimization...");
 
-                /// Start Optimization here
+                    /// Start Optimization here
 
-                /// Step 1: Initialization
-                Eigen::Matrix3d Rotn;
-                Rotn(0, 0) = 1;
-                Rotn(0, 1) = 0;
-                Rotn(0, 2) = 0;
-                Rotn(1, 0) = 0;
-                Rotn(1, 1) = 0;
-                Rotn(1, 2) = 1;
-                Rotn(2, 0) = 0;
-                Rotn(2, 1) = 0;
-                Rotn(2, 2) = 1;
-                Eigen::Quaterniond quatn(Rotn);
-                Eigen::Vector3d Translation = Eigen::Vector3d(0, 0, 0);
+                    /// Step 1: Initialization
+                    Eigen::Matrix3d Rotn;
+                    Rotn(0, 0) = 1;
+                    Rotn(0, 1) = 0;
+                    Rotn(0, 2) = 0;
+                    Rotn(1, 0) = 0;
+                    Rotn(1, 1) = 0;
+                    Rotn(1, 2) = 1;
+                    Rotn(2, 0) = 0;
+                    Rotn(2, 1) = 0;
+                    Rotn(2, 2) = 1;
+                    Eigen::Quaterniond quatn(Rotn);
+                    Eigen::Vector3d Translation = Eigen::Vector3d(0, 0, 0);
 
-                /// Step2: Defining the Loss function (Can be NONE)
-                ceres::LossFunction* loss_function = NULL;
-                ceres::LocalParameterization* quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
+                    /// Step2: Defining the Loss function (Can be NONE)
+                    ceres::LossFunction *loss_function = NULL;
+                    ceres::LocalParameterization *quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
 
-                /// Step 3: Form the Optimization Problem
-                ceres::Problem problem;
-                problem.AddParameterBlock(Translation.data(), 3);
-                problem.AddParameterBlock(quatn.coeffs().data(), 4);
-                for(int i = 0; i< all_normals.size(); i++) {
-                    Eigen::Vector3d normal_i = all_normals[i];
-                    std::vector<Eigen::Vector3d> lidar_points_i
-                    = all_lidar_points[i];
-                    for(int j = 0; j < lidar_points_i.size(); j++){
-                        Eigen::Vector3d lidar_point = lidar_points_i[j];
-                        ceres::CostFunction* cost_function = new
-                                ceres::AutoDiffCostFunction<CalibrationErrorTerm, 1, 3, 4>
-                                        (new CalibrationErrorTerm(lidar_point, normal_i));
-                        problem.AddResidualBlock(cost_function, loss_function, Translation.data(), quatn.coeffs().data());
-                        problem.SetParameterization(quatn.coeffs().data(), quaternion_local_parameterization);
+                    /// Step 3: Form the Optimization Problem
+                    ceres::Problem problem;
+                    problem.AddParameterBlock(Translation.data(), 3);
+                    problem.AddParameterBlock(quatn.coeffs().data(), 4);
+                    for (int i = 0; i < all_normals.size(); i++) {
+                        Eigen::Vector3d normal_i = all_normals[i];
+                        std::vector<Eigen::Vector3d> lidar_points_i
+                                = all_lidar_points[i];
+                        for (int j = 0; j < lidar_points_i.size(); j++) {
+                            Eigen::Vector3d lidar_point = lidar_points_i[j];
+                            ceres::CostFunction *cost_function = new
+                                    ceres::AutoDiffCostFunction<CalibrationErrorTerm, 1, 3, 4>
+                                    (new CalibrationErrorTerm(lidar_point, normal_i));
+                            problem.AddResidualBlock(cost_function, loss_function, Translation.data(),
+                                                     quatn.coeffs().data());
+                            problem.SetParameterization(quatn.coeffs().data(), quaternion_local_parameterization);
 
+                        }
                     }
+
+                    /// Step 4: Solve it
+                    ceres::Solver::Options options;
+                    options.max_num_iterations = 200;
+                    options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+                    options.minimizer_progress_to_stdout = true;
+                    ceres::Solver::Summary summary;
+                    ceres::Solve(options, &problem, &summary);
+                    std::cout << summary.FullReport() << '\n';
+
+                    /// Step 5: Covariance Estimation
+                    ceres::Covariance::Options options_cov;
+                    ceres::Covariance covariance(options_cov);
+                    std::vector<std::pair<const double *, const double *> > covariance_blocks;
+                    covariance_blocks.push_back(std::make_pair(Translation.data(), Translation.data()));
+                    covariance_blocks.push_back(std::make_pair(quatn.coeffs().data(), quatn.coeffs().data()));
+                    covariance_blocks.push_back(std::make_pair(Translation.data(), quatn.coeffs().data()));
+                    covariance.Compute(covariance_blocks, &problem);
+                    double covariance_xx[3 * 3];
+                    double covariance_yy[4 * 4];
+                    double covariance_xy[3 * 4];
+                    covariance.GetCovarianceBlock(Translation.data(),
+                                                  Translation.data(),
+                                                  covariance_xx);
+                    covariance.GetCovarianceBlock(quatn.coeffs().data(),
+                                                  quatn.coeffs().data(),
+                                                  covariance_yy);
+                    covariance.GetCovarianceBlock(Translation.data(),
+                                                  quatn.coeffs().data(),
+                                                  covariance_xy);
+
+                    /// Printing and Storing C_T_L in a file
+                    Rotn = quatn.normalized().toRotationMatrix();
+                    Eigen::MatrixXd C_T_L(3, 4);
+                    C_T_L.block(0, 0, 3, 3) = Rotn;
+                    C_T_L.block(0, 3, 3, 1) = Translation;
+
+                    std::cout << "C_T_L = " << std::endl;
+                    std::cout << C_T_L << std::endl;
+
+                    std::ofstream results;
+                    results.open(result_str);
+                    results << C_T_L;
+                    results.close();
+
+                    ros::shutdown();
                 }
-
-                /// Step 4: Solve it
-                ceres::Solver::Options options;
-                options.max_num_iterations = 200;
-                options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
-                options.minimizer_progress_to_stdout = true;
-                ceres::Solver::Summary summary;
-                ceres::Solve(options, &problem, &summary);
-                std::cout << summary.FullReport() << '\n';
-
-                /// Step 5: Covariance Estimation (TODO)
-                ceres::Covariance::Options options_cov;
-                ceres::Covariance covariance(options_cov);
-                std::vector<std::pair<const double*, const double*> > covariance_blocks;
-                covariance_blocks.push_back(std::make_pair(Translation.data(), Translation.data()));
-                covariance_blocks.push_back(std::make_pair(quatn.coeffs().data(), quatn.coeffs().data()));
-                covariance_blocks.push_back(std::make_pair(Translation.data(), quatn.coeffs().data()));
-                covariance.Compute(covariance_blocks, &problem);
-                double covariance_xx[3*3];
-                double covariance_yy[4*4];
-                double covariance_xy[3*4];
-                covariance.GetCovarianceBlock(Translation.data(),
-                        Translation.data(),
-                        covariance_xx);
-                covariance.GetCovarianceBlock(quatn.coeffs().data(),
-                        quatn.coeffs().data(),
-                        covariance_yy);
-                covariance.GetCovarianceBlock(Translation.data(),
-                        quatn.coeffs().data(),
-                        covariance_xy);
-
-                /// Printing and Storing to a file
-                Rotn = quatn.normalized().toRotationMatrix();
-                Eigen::MatrixXd C_T_L(3, 4);
-                C_T_L.block(0, 0, 3, 3) = Rotn;
-                C_T_L.block(0, 3, 3, 1) = Translation;
-
-                std::cout << "C_T_L = " << std::endl;
-                std::cout << C_T_L << std::endl;
-
-                std::ofstream results;
-                results.open(result_str);
-                results << C_T_L;
-                results.close();
-
-                ros::shutdown();
+            } else {
+                ROS_INFO_STREAM("Not enough Rotation, view not recorded");
             }
+        } else {
+            ROS_INFO_STREAM("Checker Board Detected?: " << boardDetectedInCam << "\t" << "No of LiDAR pts: " << lidar_points.size() << " < (" << min_points_on_plane << ")");
         }
     }
 };
