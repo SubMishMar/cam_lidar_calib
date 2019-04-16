@@ -240,11 +240,7 @@ public:
         }
     }
 
-    void callback(const sensor_msgs::CameraInfoConstPtr &camInfo_msg,
-                  const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
-                  const sensor_msgs::ImageConstPtr &image_msg) {
-        imageHandler(camInfo_msg, image_msg);
-        cloudHandler(cloud_msg);
+    void runSolver() {
         if (lidar_points.size() > min_points_on_plane && boardDetectedInCam) {
             if (r3.dot(r3_old) < 0.9) {
                 r3_old = r3;
@@ -259,15 +255,9 @@ public:
 
                     /// Step 1: Initialization
                     Eigen::Matrix3d Rotn;
-                    Rotn(0, 0) = 1;
-                    Rotn(0, 1) = 0;
-                    Rotn(0, 2) = 0;
-                    Rotn(1, 0) = 0;
-                    Rotn(1, 1) = 0;
-                    Rotn(1, 2) = 1;
-                    Rotn(2, 0) = 0;
-                    Rotn(2, 1) = 0;
-                    Rotn(2, 2) = 1;
+                    Rotn(0, 0) = 0; Rotn(0, 1) = -1; Rotn(0, 2) = 0;
+                    Rotn(1, 0) = 0; Rotn(1, 1) = 0; Rotn(1, 2) = -1;
+                    Rotn(2, 0) = 1; Rotn(2, 1) = 0; Rotn(2, 2) = 0;
                     Eigen::Quaterniond quatn(Rotn);
                     Eigen::Vector3d Translation = Eigen::Vector3d(0, 0, 0);
 
@@ -347,6 +337,14 @@ public:
         } else {
             ROS_INFO_STREAM("Checker Board Detected?: " << boardDetectedInCam << "\t" << "No of LiDAR pts: " << lidar_points.size() << " < (" << min_points_on_plane << ")");
         }
+    }
+
+    void callback(const sensor_msgs::CameraInfoConstPtr &camInfo_msg,
+                  const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
+                  const sensor_msgs::ImageConstPtr &image_msg) {
+        imageHandler(camInfo_msg, image_msg);
+        cloudHandler(cloud_msg);
+        runSolver();
     }
 };
 
