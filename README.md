@@ -9,12 +9,24 @@ The package is used to calibrate a Velodyne VLP-32 LiDAR with a Basler Camera. T
 5. [Future Improvements](#Future-Improvements)
 
 ## Setup
-It is necessary to have the following installed:
+It is necessary to have atleast the following installed:
 * [ROS](https://www.ros.org/)
 * [Ceres](http://ceres-solver.org/)
+* [OpenCV](https://opencv.org/) (This ships with ROS, but standalone versions can be used)
+* [PCL](http://pointclouds.org/)
 * Drivers for camera and LiDAR
 
 ROS is used because it is easy to log data in a nearly synchronized way and visualize it under this framework. For Non-Linear optimization the popular Ceres library is used. 
 
 ### Experimental Setup
 ![alt-text](images/setup.jpg "Experimental Setup")
+The image above show the sensors used, a Velodyne VLP-32 and a Basler acA2500, A checkerboard with known square dimension is also needed. I have used the checkerboard pattern available [here](https://docs.opencv.org/2.4.13.7/_downloads/pattern.png). The default size is too small for our purpose so I used Adobe Photoshop to generate a bigger image with each squares checker pattern sized 0.075 m (7.5 cm). In my experience the bigger the pattern the better but the size must satisfy practical constraints like the field of view of the camera, etc.
+
+## Calibration
+First, the camera intrinsics needs to be calibrated. I used the [ros camera calibrator](http://wiki.ros.org/camera_calibration) for the same using the checkboard I mentioned about in the previous section. 
+
+For external calibration, the checkboard is moved in the mutual fov of both the camera and the LiDAR. It is worth noting that rotational motion of the checkboard along off normal axes adds more constraints to the optimization procedure than rotation along normal to the checkerboard plane or translations along any direction. 
+
+I used functions available in OpenCV to find the checkerboard in the image and to determine the relative transformation between the camera and the checkerboard, this transformation matrix gives us information about the surface normal of the checkerboard plane. 
+
+Next, I used PCL to cluster the points lying in the checkerboard plane in the LiDAR frame.
