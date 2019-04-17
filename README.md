@@ -35,3 +35,4 @@ For each view that can add to the constraint, we have one vector normal to the c
 
 ## Cross Projection
 [![Alt text](https://img.youtube.com/vi/aZzL0kT2G5w/0.jpg)](https://www.youtube.com/watch?v=aZzL0kT2G5w)
+To check the veracity of the external calibration parameter estimation procedure, I use the parameters to project the lidar points on the image and color the point cloud. The results are shown in the video above. I am still looking for methods to quantify how good or bad the results are.
