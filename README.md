@@ -34,4 +34,4 @@ Next, I used PCL to cluster the points lying in the checkerboard plane in the Li
 For each view that can add to the constraint, we have one vector normal to the checkerboard plane expressed in the camera frame and several points lying on the checkerboard in the lidar frame. This data is used to form a objective function, the details of which can be found in the aforementioned paper. The Ceres library is used to search for the relative transformation between the camera and the lidar which minimizes this objective function. A demo is shown in the video below. First, we collect data from multiple views and then once we have sufficient information(ambigous) we run the optimization. As mentioned earlier, we need atleast 3 non coplanar views to zero in on a unique solution. [![Alt text](https://img.youtube.com/vi/nYAhRjQ0G-U/0.jpg)](https://www.youtube.com/watch?v=nYAhRjQ0G-U)
 
 ## Cross Projection
-[![Alt text](https://img.youtube.com/vi/25nOx-qohFM/0.jpg)](https://www.youtube.com/watch?v=25nOx-qohFM)
+[![Alt text](https://img.youtube.com/vi/aZzL0kT2G5w/0.jpg)](https://www.youtube.com/watch?v=aZzL0kT2G5w)
