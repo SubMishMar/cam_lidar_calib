@@ -249,7 +249,7 @@ public:
             double range = sqrt(X*X + Y*Y + Z*Z);
             double red_field = 255*(range - min_range)/(max_range - min_range);
             double green_field = 255*(max_range - range)/(max_range - min_range);
-            cv::circle(image_in, imagePoints[i], 4,
+            cv::circle(image_in, imagePoints[i], 6,
                        CV_RGB(red_field, green_field, 0), -1, 8, 0);
         }
     }
