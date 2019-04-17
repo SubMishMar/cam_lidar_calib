@@ -25,8 +25,14 @@ The image above show the sensors used, a Velodyne VLP-32 and a Basler acA2500, A
 ## Calibration
 First, the camera intrinsics needs to be calibrated. I used the [ros camera calibrator](http://wiki.ros.org/camera_calibration) for the same using the checkboard I mentioned about in the previous section. 
 
-For external calibration, the checkboard is moved in the mutual fov of both the camera and the LiDAR. It is worth noting that rotational motion of the checkboard along off normal axes adds more constraints to the optimization procedure than rotation along normal to the checkerboard plane or translations along any direction. 
+For external calibration, the checkboard is moved in the mutual fov of both the camera and the LiDAR. It is worth noting that rotational motion of the checkboard along off normal axes adds more constraints to the optimization procedure than rotation along normal to the checkerboard plane or translations along any direction. Each view, which has significant rotation wrt the previous view adds a unique constraint. As mentioned in the paper linked above, for the given setup, we need atleast 3 non coplanar views of the checkerboard to obtain a unique transformation matrix between the camera and the lidar.
 
 I used functions available in OpenCV to find the checkerboard in the image and to determine the relative transformation between the camera and the checkerboard, this transformation matrix gives us information about the surface normal of the checkerboard plane. 
 
-Next, I used PCL to cluster the points lying in the checkerboard plane in the LiDAR frame.
+Next, I used PCL to cluster the points lying in the checkerboard plane in the LiDAR frame. 
+
+For each view that can add to the constraint, we have one vector normal to the checkerboard plane expressed in the camera frame and several points lying on the checkerboard in the lidar frame. This data is used to form a objective function, the details of which can be found in the aforementioned paper. The Ceres library is used to search for the relative transformation between the camera and the lidar which minimizes this objective function.
+
+
+<a href="https://youtu.be/nYAhRjQ0G-U" target="_blank"><img src="https://youtu.be/nYAhRjQ0G-U/0.jpg" 
+alt="ExternalCalib" width="240" height="180" border="10" /></a>
