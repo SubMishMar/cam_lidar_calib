@@ -31,10 +31,12 @@
 #include <pcl/filters/passthrough.h>
 
 #include <pcl/sample_consensus/ransac.h>
-#include <pcl/sample_consensus/sac_model_plane.h>
-#include <pcl/sample_consensus/sac_model_line.h>
-#include <pcl/sample_consensus/sac_model_sphere.h>
 #include <pcl/sample_consensus/sac_model.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/sac_model_line.h>
+#include <pcl/sample_consensus/sac_model_plane.h>
+#include <pcl/sample_consensus/sac_model_sphere.h>
 
 #include <pcl/filters/statistical_outlier_removal.h>
 
@@ -83,6 +85,9 @@ private:
 
     std::string lidar_frameId;
 
+    pcl::PointCloud<pcl::PointXYZRGB> out_cloud_pcl;
+    cv::Mat image_in;
+
 public:
     lidarImageProjection() {
 
@@ -118,6 +123,7 @@ public:
             }
         }
         L_T_C = C_T_L.inverse();
+
         C_R_L = C_T_L.block(0, 0, 3, 3);
         C_t_L = C_T_L.block(0, 3, 3, 1);
 
@@ -132,15 +138,11 @@ public:
     }
 
     template <typename T>
-    T readParam(ros::NodeHandle &n, std::string name)
-    {
+    T readParam(ros::NodeHandle &n, std::string name){
         T ans;
-        if (n.getParam(name, ans))
-        {
+        if (n.getParam(name, ans)){
             ROS_INFO_STREAM("Loaded " << name << ": " << ans);
-        }
-        else
-        {
+        } else {
             ROS_ERROR_STREAM("Failed to load " << name);
             n.shutdown();
         }
@@ -189,18 +191,15 @@ public:
         return plane_filtered;
     }
 
-    cv::Vec3b atf(cv::Mat rgb, cv::Point2d xy_f)
-    {
+    cv::Vec3b atf(cv::Mat rgb, cv::Point2d xy_f){
         cv::Vec3i color_i;
         color_i.val[0] = color_i.val[1] = color_i.val[2] = 0;
 
         int x = xy_f.x;
         int y = xy_f.y;
 
-        for (int row = 0; row <= 1; row++)
-        {
-            for (int col = 0; col <= 1; col++)
-            {
+        for (int row = 0; row <= 1; row++){
+            for (int col = 0; col <= 1; col++){
                 if((x+col)< rgb.cols && (y+row) < rgb.rows) {
                     cv::Vec3b c = rgb.at<cv::Vec3b>(cv::Point(x + col, y + row));
                     for (int i = 0; i < 3; i++){
@@ -211,8 +210,7 @@ public:
         }
 
         cv::Vec3b color;
-        for (int i = 0; i < 3; i++)
-        {
+        for (int i = 0; i < 3; i++){
             color.val[i] = color_i.val[i] / 4;
         }
         return color;
@@ -228,6 +226,34 @@ public:
         br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), lidar_frameId, "camera"));
     }
 
+    void colorPointCloud() {
+        out_cloud_pcl.points.clear();
+        out_cloud_pcl.resize(objectPoints_L.size());
+
+        for(size_t i = 0; i < objectPoints_L.size(); i++) {
+            cv::Vec3b rgb = atf(image_in, imagePoints[i]);
+            pcl::PointXYZRGB pt_rgb(rgb.val[2], rgb.val[1], rgb.val[0]);
+            pt_rgb.x = objectPoints_L[i].x;
+            pt_rgb.y = objectPoints_L[i].y;
+            pt_rgb.z = objectPoints_L[i].z;
+            out_cloud_pcl.push_back(pt_rgb);
+        }
+    }
+
+    void colorLidarPointsOnImage(double min_range,
+            double max_range) {
+        for(size_t i = 0; i < imagePoints.size(); i++) {
+            double X = objectPoints_C[i].x;
+            double Y = objectPoints_C[i].y;
+            double Z = objectPoints_C[i].z;
+            double range = sqrt(X*X + Y*Y + Z*Z);
+            double red_field = 255*(range - min_range)/(max_range - min_range);
+            double green_field = 255*(max_range - range)/(max_range - min_range);
+            cv::circle(image_in, imagePoints[i], 4,
+                       CV_RGB(red_field, green_field, 0), -1, 8, 0);
+        }
+    }
+
     void callback(const sensor_msgs::CameraInfoConstPtr &camInfo_msg,
                   const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
                   const sensor_msgs::ImageConstPtr &image_msg) {
@@ -236,7 +262,7 @@ public:
         objectPoints_C.clear();
         imagePoints.clear();
         publishTransforms();
-        cv::Mat image_in = cv_bridge::toCvShare(image_msg, "bgr8")->image;
+        image_in = cv_bridge::toCvShare(image_msg, "bgr8")->image;
 
 
         double fov_x, fov_y;
@@ -259,16 +285,11 @@ public:
         pcl::PointCloud<pcl::PointXYZ>::Ptr in_cloud(new pcl::PointCloud<pcl::PointXYZ>);
         if(project_only_plane) {
             in_cloud = planeFilter(cloud_msg);
-
             for(size_t i = 0; i < in_cloud->points.size(); i++) {
                 objectPoints_L.push_back(cv::Point3d(in_cloud->points[i].x, in_cloud->points[i].y, in_cloud->points[i].z));
             }
-
             cv::projectPoints(objectPoints_L, rvec, tvec, projection_matrix, distCoeff, imagePoints, cv::noArray());
         } else {
-
-
-
             pcl::PCLPointCloud2 *cloud_in = new pcl::PCLPointCloud2;
             pcl_conversions::toPCL(*cloud_msg, *cloud_in);
             pcl::fromPCLPointCloud2(*cloud_in, *in_cloud);
@@ -287,7 +308,6 @@ public:
 
                 Eigen::Vector3d pointCloud_C;
                 pointCloud_C = C_T_L.block(0, 0, 3, 4)*pointCloud_L;
-
 
                 double X = pointCloud_C[0];
                 double Y = pointCloud_C[1];
@@ -317,38 +337,23 @@ public:
             cv::projectPoints(objectPoints_L, rvec, tvec, projection_matrix, distCoeff, imagePoints, cv::noArray());
         }
 
-        pcl::PointCloud<pcl::PointXYZRGB> out_cloud_pcl;
-        out_cloud_pcl.resize(objectPoints_L.size());
-
-        for(size_t i = 0; i < objectPoints_L.size(); i++) {
-            cv::Vec3b rgb = atf(image_in, imagePoints[i]);
-            pcl::PointXYZRGB pt_rgb(rgb.val[2], rgb.val[1], rgb.val[0]);
-            pt_rgb.x = objectPoints_L[i].x;
-            pt_rgb.y = objectPoints_L[i].y;
-            pt_rgb.z = objectPoints_L[i].z;
-            out_cloud_pcl.push_back(pt_rgb);
-        }
+        /// Color the Point Cloud
+        colorPointCloud();
 
         pcl::toROSMsg(out_cloud_pcl, out_cloud_ros);
         out_cloud_ros.header.frame_id = cloud_msg->header.frame_id;
         out_cloud_ros.header.stamp = cloud_msg->header.stamp;
 
         cloud_pub.publish(out_cloud_ros);
-        for(size_t i = 0; i < imagePoints.size(); i++) {
-            double X = objectPoints_C[i].x;
-            double Y = objectPoints_C[i].y;
-            double Z = objectPoints_C[i].z;
-            double range = sqrt(X*X + Y*Y + Z*Z);
-            double red_field = 255*(range - min_range)/(max_range - min_range);
-            double green_field = 255*(max_range - range)/(max_range - min_range);
-            cv::circle(image_in, imagePoints[i], 4,
-                    CV_RGB(red_field, green_field, 0), -1, 8, 0);
-        }
+
+        /// Color Lidar Points on the image a/c to distance
+        colorLidarPointsOnImage(min_range, max_range);
+
         sensor_msgs::ImagePtr msg =
                 cv_bridge::CvImage(std_msgs::Header(), "bgr8", image_in).toImageMsg();
         image_pub.publish(msg);
 //        cv::Mat image_resized;
-//        cv::resize(image_in, image_resized, cv::Size(), 0.25, 0.25);
+//        cv::resize(lidarPtsImg, image_resized, cv::Size(), 0.25, 0.25);
 //        cv::imshow("view", image_resized);
 //        cv::waitKey(10);
     }

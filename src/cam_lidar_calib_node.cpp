@@ -247,7 +247,7 @@ public:
                 all_normals.push_back(Nc);
                 all_lidar_points.push_back(lidar_points);
                 ROS_ASSERT(all_normals.size() == all_lidar_points.size());
-                ROS_INFO_STREAM("View: " << all_normals.size());
+                ROS_INFO_STREAM("Recording View number: " << all_normals.size());
                 if (all_normals.size() >= 10) {
                     ROS_INFO_STREAM("Starting optimization...");
 
@@ -332,10 +332,15 @@ public:
                     ros::shutdown();
                 }
             } else {
-                ROS_INFO_STREAM("Not enough Rotation, view not recorded");
+                ROS_WARN_STREAM("Not enough Rotation, view not recorded");
             }
         } else {
-            ROS_INFO_STREAM("Checker Board Detected?: " << boardDetectedInCam << "\t" << "No of LiDAR pts: " << lidar_points.size() << " < (" << min_points_on_plane << ")");
+            if(!boardDetectedInCam)
+                ROS_WARN_STREAM("Checker-board not detected in Image.");
+            else {
+                ROS_WARN_STREAM("Checker Board Detected in Image?: " << boardDetectedInCam << "\t" <<
+                "No of LiDAR pts: " << lidar_points.size() << " (Check if this is less than threshold) ");
+            }
         }
     }
 
