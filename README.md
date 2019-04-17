@@ -34,5 +34,5 @@ Next, I used PCL to cluster the points lying in the checkerboard plane in the Li
 For each view that can add to the constraint, we have one vector normal to the checkerboard plane expressed in the camera frame and several points lying on the checkerboard in the lidar frame. This data is used to form a objective function, the details of which can be found in the aforementioned paper. The Ceres library is used to search for the relative transformation between the camera and the lidar which minimizes this objective function.
 
 
-<a href="https://youtu.be/nYAhRjQ0G-U" target="_blank"><img src="https://youtu.be/nYAhRjQ0G-U/0.jpg" 
+<a href="https://www.youtube.com/embed/nYAhRjQ0G-U" target="_blank"><img src="https://www.youtube.com/embed/nYAhRjQ0G-U/0.jpg" 
 alt="ExternalCalib" width="240" height="180" border="10" /></a>
