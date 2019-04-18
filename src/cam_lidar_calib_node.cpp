@@ -43,6 +43,7 @@
 #include "ceres/ceres.h"
 #include "glog/logging.h"
 
+#include "ceres/rotation.h"
 #include "ceres/covariance.h"
 
 #include <fstream>
@@ -258,17 +259,23 @@ public:
                     Rotn(0, 0) = 0; Rotn(0, 1) = -1; Rotn(0, 2) = 0;
                     Rotn(1, 0) = 0; Rotn(1, 1) = 0; Rotn(1, 2) = -1;
                     Rotn(2, 0) = 1; Rotn(2, 1) = 0; Rotn(2, 2) = 0;
-                    Eigen::Quaterniond quatn(Rotn);
-                    Eigen::Vector3d Translation = Eigen::Vector3d(0, 0, 0);
+                    Eigen::Vector3d axis_angle;
+                    ceres::RotationMatrixToAngleAxis(Rotn.data(), axis_angle.data());
 
+                    Eigen::Vector3d Translation = Eigen::Vector3d(0, 0, 0);
+                    Eigen::VectorXd R_t(6);
+                    R_t(0) = axis_angle(0);
+                    R_t(1) = axis_angle(1);
+                    R_t(2) = axis_angle(2);
+                    R_t(3) = Translation(0);
+                    R_t(4) = Translation(1);
+                    R_t(5) = Translation(2);
                     /// Step2: Defining the Loss function (Can be NONE)
                     ceres::LossFunction *loss_function = NULL;
-                    ceres::LocalParameterization *quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
 
                     /// Step 3: Form the Optimization Problem
                     ceres::Problem problem;
-                    problem.AddParameterBlock(Translation.data(), 3);
-                    problem.AddParameterBlock(quatn.coeffs().data(), 4);
+                    problem.AddParameterBlock(R_t.data(), 6);
                     for (int i = 0; i < all_normals.size(); i++) {
                         Eigen::Vector3d normal_i = all_normals[i];
                         std::vector<Eigen::Vector3d> lidar_points_i
@@ -276,12 +283,10 @@ public:
                         for (int j = 0; j < lidar_points_i.size(); j++) {
                             Eigen::Vector3d lidar_point = lidar_points_i[j];
                             ceres::CostFunction *cost_function = new
-                                    ceres::AutoDiffCostFunction<CalibrationErrorTerm, 1, 3, 4>
+                                    ceres::AutoDiffCostFunction<CalibrationErrorTerm, 1, 6>
                                     (new CalibrationErrorTerm(lidar_point, normal_i));
-                            problem.AddResidualBlock(cost_function, loss_function, Translation.data(),
-                                                     quatn.coeffs().data());
-                            problem.SetParameterization(quatn.coeffs().data(), quaternion_local_parameterization);
-
+                            problem.AddResidualBlock(cost_function, loss_function, R_t.data());
+//                            problem.SetParameterization(quatn.coeffs().data(), quaternion_local_parameterization);
                         }
                     }
 
@@ -297,38 +302,38 @@ public:
                     /// Step 5: Covariance Estimation
                     ceres::Covariance::Options options_cov;
                     ceres::Covariance covariance(options_cov);
-                    std::vector<std::pair<const double *, const double *> > covariance_blocks;
-                    covariance_blocks.push_back(std::make_pair(Translation.data(), Translation.data()));
-                    covariance_blocks.push_back(std::make_pair(quatn.coeffs().data(), quatn.coeffs().data()));
-                    covariance_blocks.push_back(std::make_pair(Translation.data(), quatn.coeffs().data()));
+                    std::vector<std::pair<const double*, const double*> > covariance_blocks;
+                    covariance_blocks.push_back(std::make_pair(R_t.data(), R_t.data()));
                     covariance.Compute(covariance_blocks, &problem);
-                    double covariance_xx[3 * 3];
-                    double covariance_yy[4 * 4];
-                    double covariance_xy[3 * 4];
-                    covariance.GetCovarianceBlock(Translation.data(),
-                                                  Translation.data(),
+                    double covariance_xx[6 * 6];
+                    covariance.GetCovarianceBlock(R_t.data(),
+                                                  R_t.data(),
                                                   covariance_xx);
-                    covariance.GetCovarianceBlock(quatn.coeffs().data(),
-                                                  quatn.coeffs().data(),
-                                                  covariance_yy);
-                    covariance.GetCovarianceBlock(Translation.data(),
-                                                  quatn.coeffs().data(),
-                                                  covariance_xy);
 
                     /// Printing and Storing C_T_L in a file
-                    Rotn = quatn.normalized().toRotationMatrix();
+                    ceres::AngleAxisToRotationMatrix(R_t.data(), Rotn.data());
                     Eigen::MatrixXd C_T_L(3, 4);
                     C_T_L.block(0, 0, 3, 3) = Rotn;
-                    C_T_L.block(0, 3, 3, 1) = Translation;
+                    C_T_L.block(0, 3, 3, 1) = Eigen::Vector3d(R_t[3], R_t[4], R_t[5]);
 
                     std::cout << "C_T_L = " << std::endl;
                     std::cout << C_T_L << std::endl;
 
+                    Eigen::MatrixXd cov_mat_RotTrans(6, 6);
+                    cv::Mat cov_mat_cv = cv::Mat(6, 6, CV_64F, &covariance_xx);
+                    cv::cv2eigen(cov_mat_cv, cov_mat_RotTrans);
+
+                    Eigen::MatrixXd cov_mat_TransRot(6, 6);
+                    cov_mat_TransRot.block(0, 0, 3, 3) = cov_mat_RotTrans.block(3, 3, 3, 3);
+                    cov_mat_TransRot.block(3, 3, 3, 3) = cov_mat_RotTrans.block(0, 0, 3, 3);
+                    cov_mat_TransRot.block(0, 3, 3, 3) = cov_mat_RotTrans.block(3, 0, 3, 3);
+                    cov_mat_TransRot.block(3, 0, 3, 3) = cov_mat_RotTrans.block(0, 3, 3, 3);
+                    std::cout << "COV = " << std::endl;
+                    std::cout << cov_mat_TransRot << std::endl;
                     std::ofstream results;
                     results.open(result_str);
                     results << C_T_L;
                     results.close();
-
                     ros::shutdown();
                 }
             } else {

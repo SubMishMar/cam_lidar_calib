@@ -7,7 +7,11 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <ceres/ceres.h>
+#include <ceres/rotation.h>
 #include <ceres/autodiff_cost_function.h>
+
+
 class CalibrationErrorTerm {
 private:
     const Eigen::Vector3d laser_point_;
@@ -20,15 +24,23 @@ public:
                          {}
 
     template  <typename  T>
-    bool operator() (const T* const c_t_l_ptr,
-                     const T* const c_q_l_ptr,
+    bool operator() (const T* const R_t,
                      T* residual) const {
-        Eigen::Map<const Eigen::Matrix<T, 3, 1> > c_t_l(c_t_l_ptr);
-        Eigen::Map<const Eigen::Quaternion<T> > c_q_l(c_q_l_ptr);
-        residual[0] =
-                (normal_to_plane_.template cast<T>()).normalized().dot(c_q_l.normalized()
-                *(laser_point_.template cast<T>()) + c_t_l)
-                -  (normal_to_plane_.template cast<T>()).norm();
+        T l_pt_L[3] = {T(laser_point_(0)), T(laser_point_(1)), T(laser_point_(2))};
+        T n_C[3] = {T(normal_to_plane_(0)), T(normal_to_plane_(1)), T(normal_to_plane_(2))};
+        T l_pt_C[3];
+        ceres::AngleAxisRotatePoint(R_t, l_pt_L, l_pt_C);
+        l_pt_C[0] += R_t[3];
+        l_pt_C[1] += R_t[4];
+        l_pt_C[2] += R_t[5];
+        Eigen::Matrix<T, 3, 1> laser_point_C(l_pt_C);
+        Eigen::Matrix<T, 3, 1> laser_point_L(l_pt_L);
+        Eigen::Matrix<T, 3, 1> normal_C(n_C);
+        residual[0] = normal_C.normalized().dot(laser_point_C) - normal_C.norm();
+//        l_pt_C(0) += R_t[3];
+//        l_pt_C(1) += R_t[4];
+//        l_pt_C(2) += R_t[5];
+
         return true;
     }
 };
