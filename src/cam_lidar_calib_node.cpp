@@ -88,6 +88,8 @@ private:
 
     sensor_msgs::PointCloud2 out_cloud;
     std::string result_str;
+
+    int num_views;
 public:
 
 
@@ -111,6 +113,7 @@ public:
         checkerboard_rows = readParam<int>(nh, "checkerboard_rows");
         checkerboard_cols = readParam<int>(nh, "checkerboard_cols");
         min_points_on_plane = readParam<int>(nh, "min_points_on_plane");
+        num_views = readParam<int>(nh, "num_views");
 
         for(int i = 0; i < checkerboard_rows; i++)
             for (int j = 0; j < checkerboard_cols; j++)
@@ -249,16 +252,16 @@ public:
                 all_lidar_points.push_back(lidar_points);
                 ROS_ASSERT(all_normals.size() == all_lidar_points.size());
                 ROS_INFO_STREAM("Recording View number: " << all_normals.size());
-                if (all_normals.size() >= 10) {
+                if (all_normals.size() >= num_views) {
                     ROS_INFO_STREAM("Starting optimization...");
 
                     /// Start Optimization here
 
                     /// Step 1: Initialization
                     Eigen::Matrix3d Rotn;
-                    Rotn(0, 0) = 0; Rotn(0, 1) = -1; Rotn(0, 2) = 0;
-                    Rotn(1, 0) = 0; Rotn(1, 1) = 0; Rotn(1, 2) = -1;
-                    Rotn(2, 0) = 1; Rotn(2, 1) = 0; Rotn(2, 2) = 0;
+                    Rotn(0, 0) = 1; Rotn(0, 1) = 0; Rotn(0, 2) = 0;
+                    Rotn(1, 0) = 0; Rotn(1, 1) = 1; Rotn(1, 2) = 0;
+                    Rotn(2, 0) = 0; Rotn(2, 1) = 0; Rotn(2, 2) = 1;
                     Eigen::Vector3d axis_angle;
                     ceres::RotationMatrixToAngleAxis(Rotn.data(), axis_angle.data());
 
@@ -299,16 +302,7 @@ public:
                     ceres::Solve(options, &problem, &summary);
                     std::cout << summary.FullReport() << '\n';
 
-                    /// Step 5: Covariance Estimation
-                    ceres::Covariance::Options options_cov;
-                    ceres::Covariance covariance(options_cov);
-                    std::vector<std::pair<const double*, const double*> > covariance_blocks;
-                    covariance_blocks.push_back(std::make_pair(R_t.data(), R_t.data()));
-                    covariance.Compute(covariance_blocks, &problem);
-                    double covariance_xx[6 * 6];
-                    covariance.GetCovarianceBlock(R_t.data(),
-                                                  R_t.data(),
-                                                  covariance_xx);
+
 
                     /// Printing and Storing C_T_L in a file
                     ceres::AngleAxisToRotationMatrix(R_t.data(), Rotn.data());
@@ -319,6 +313,17 @@ public:
                     std::cout << "C_T_L = " << std::endl;
                     std::cout << C_T_L << std::endl;
 
+                    /// Step 5: Covariance Estimation
+                    ceres::Covariance::Options options_cov;
+                    ceres::Covariance covariance(options_cov);
+                    std::vector<std::pair<const double*, const double*> > covariance_blocks;
+                    covariance_blocks.push_back(std::make_pair(R_t.data(), R_t.data()));
+                    CHECK(covariance.Compute(covariance_blocks, &problem));
+                    double covariance_xx[6 * 6];
+                    covariance.GetCovarianceBlock(R_t.data(),
+                                                  R_t.data(),
+                                                  covariance_xx);
+
                     Eigen::MatrixXd cov_mat_RotTrans(6, 6);
                     cv::Mat cov_mat_cv = cv::Mat(6, 6, CV_64F, &covariance_xx);
                     cv::cv2eigen(cov_mat_cv, cov_mat_RotTrans);
@@ -328,8 +333,23 @@ public:
                     cov_mat_TransRot.block(3, 3, 3, 3) = cov_mat_RotTrans.block(0, 0, 3, 3);
                     cov_mat_TransRot.block(0, 3, 3, 3) = cov_mat_RotTrans.block(3, 0, 3, 3);
                     cov_mat_TransRot.block(3, 0, 3, 3) = cov_mat_RotTrans.block(0, 3, 3, 3);
-                    std::cout << "COV = " << std::endl;
-                    std::cout << cov_mat_TransRot << std::endl;
+
+                    double  sigma_xx = sqrt(cov_mat_TransRot(0, 0));
+                    double  sigma_yy = sqrt(cov_mat_TransRot(1, 1));
+                    double  sigma_zz = sqrt(cov_mat_TransRot(2, 2));
+
+                    double sigma_rot_xx = sqrt(cov_mat_TransRot(3, 3));
+                    double sigma_rot_yy = sqrt(cov_mat_TransRot(4, 4));
+                    double sigma_rot_zz = sqrt(cov_mat_TransRot(5, 5));
+
+                    std::cout << "sigma_xx = " << sigma_xx << "\t"
+                              << "sigma_yy = " << sigma_yy << "\t"
+                              << "sigma_zz = " << sigma_zz << std::endl;
+
+                    std::cout << "sigma_rot_xx = " << sigma_rot_xx*180/M_PI << "\t"
+                              << "sigma_rot_yy = " << sigma_rot_yy*180/M_PI << "\t"
+                              << "sigma_rot_zz = " << sigma_rot_zz*180/M_PI << std::endl;
+
                     std::ofstream results;
                     results.open(result_str);
                     results << C_T_L;

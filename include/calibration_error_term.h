@@ -37,10 +37,6 @@ public:
         Eigen::Matrix<T, 3, 1> laser_point_L(l_pt_L);
         Eigen::Matrix<T, 3, 1> normal_C(n_C);
         residual[0] = normal_C.normalized().dot(laser_point_C) - normal_C.norm();
-//        l_pt_C(0) += R_t[3];
-//        l_pt_C(1) += R_t[4];
-//        l_pt_C(2) += R_t[5];
-
         return true;
     }
 };
