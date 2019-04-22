@@ -10,6 +10,8 @@
   <param name = "camera_in_topic" type="string" value="/pylon_camera_node/image_raw"/>
   <param name = "lidar_in_topic" type="string" value="/velodyne_points"/>
 
+  <param name = "dist_cut_off" type="int" value="5"/>
+
   <node  pkg="cam_lidar_calib" name="cam_lidar_proj" type="cam_lidar_proj_node" output="screen">
   </node>
 </launch>

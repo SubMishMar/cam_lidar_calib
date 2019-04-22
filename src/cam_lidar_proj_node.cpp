@@ -92,11 +92,14 @@ private:
     pcl::PointCloud<pcl::PointXYZRGB> out_cloud_pcl;
     cv::Mat image_in;
 
+    int dist_cut_off;
+
 public:
     lidarImageProjection() {
         camera_info_in_topic = readParam<std::string>(nh, "camera_info_in_topic");
         camera_in_topic = readParam<std::string>(nh, "camera_in_topic");
         lidar_in_topic = readParam<std::string>(nh, "lidar_in_topic");
+        dist_cut_off = readParam<int>(nh, "dist_cut_off");
 
         camInfo_sub = new message_filters::Subscriber<sensor_msgs::CameraInfo>(nh, camera_info_in_topic, 1);
         cloud_sub =  new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh, lidar_in_topic, 1);
@@ -304,7 +307,7 @@ public:
             for(size_t i = 0; i < in_cloud->points.size(); i++) {
 
                 // Reject points behind the LiDAR(and also beyond certain distance)
-                if(in_cloud->points[i].x < 0 /*|| in_cloud->points[i].x > 5*/)
+                if(in_cloud->points[i].x < 0 || in_cloud->points[i].x > dist_cut_off)
                     continue;
 
                 Eigen::Vector4d pointCloud_L;

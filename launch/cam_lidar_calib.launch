@@ -12,7 +12,7 @@
   <param name = "result_file" type="string" value="$(find cam_lidar_calib)/result/C_T_L.txt"/>
 
   <param name = "min_points_on_plane" type="int" value="450"/>
-  <param name = "num_views" type="int" value="15"/>
+  <param name = "num_views" type="int" value="10"/>
 
   <param name = "camera_info_in_topic" type="string" value="/pylon_camera_node/cam_info"/>
   <param name = "camera_in_topic" type="string" value="/pylon_camera_node/image_raw"/>
