@@ -89,14 +89,22 @@ private:
     sensor_msgs::PointCloud2 out_cloud;
     std::string result_str;
 
+    std::string camera_in_topic;
+    std::string lidar_in_topic;
+    std::string camera_info_in_topic;
+
     int num_views;
 public:
 
 
     camLidarCalib() {
-        caminfo_sub = new message_filters::Subscriber<sensor_msgs::CameraInfo>(nh, "/pylon_camera_node/cam_info", 1);
-        cloud_sub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh, "/velodyne_points", 1);
-        image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, "/pylon_camera_node/image_raw", 1);
+        camera_info_in_topic = readParam<std::string>(nh, "camera_info_in_topic");
+        camera_in_topic = readParam<std::string>(nh, "camera_in_topic");
+        lidar_in_topic = readParam<std::string>(nh, "lidar_in_topic");
+
+        caminfo_sub = new message_filters::Subscriber<sensor_msgs::CameraInfo>(nh, camera_info_in_topic, 1);
+        cloud_sub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh, lidar_in_topic, 1);
+        image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, camera_in_topic, 1);
         sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *caminfo_sub, *cloud_sub, *image_sub);
         sync->registerCallback(boost::bind(&camLidarCalib::callback, this, _1, _2, _3));
         cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("velodyne_points_out", 1);

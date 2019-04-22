@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <launch>
   <param name ="/use_sim_time" value="true"/>
+
   <param name = "result_file" type="string" value="$(find cam_lidar_calib)/result/C_T_L.txt"/>
+
   <param name= "project_only_plane" type="bool" value="false"/>
+
+  <param name = "camera_info_in_topic" type="string" value="/pylon_camera_node/cam_info"/>
+  <param name = "camera_in_topic" type="string" value="/pylon_camera_node/image_raw"/>
+  <param name = "lidar_in_topic" type="string" value="/velodyne_points"/>
+
   <node  pkg="cam_lidar_calib" name="cam_lidar_proj" type="cam_lidar_proj_node" output="screen">
   </node>
 </launch>
