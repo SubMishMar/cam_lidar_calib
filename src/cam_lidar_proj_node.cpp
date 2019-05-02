@@ -49,16 +49,14 @@
 #include <iostream>
 #include <fstream>
 
-typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::CameraInfo,
-        sensor_msgs::PointCloud2,
-        sensor_msgs::Image> SyncPolicy;
+typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::PointCloud2,
+                                                        sensor_msgs::Image> SyncPolicy;
 
 class lidarImageProjection {
 private:
 
     ros::NodeHandle nh;
 
-    message_filters::Subscriber<sensor_msgs::CameraInfo> *camInfo_sub;
     message_filters::Subscriber<sensor_msgs::PointCloud2> *cloud_sub;
     message_filters::Subscriber<sensor_msgs::Image> *image_sub;
     message_filters::Synchronizer<SyncPolicy> *sync;
@@ -87,28 +85,28 @@ private:
 
     std::string camera_in_topic;
     std::string lidar_in_topic;
-    std::string camera_info_in_topic;
 
     pcl::PointCloud<pcl::PointXYZRGB> out_cloud_pcl;
     cv::Mat image_in;
 
     int dist_cut_off;
 
+    std::string cam_config_file_path;
+    int image_width, image_height;
+
 public:
     lidarImageProjection() {
-        camera_info_in_topic = readParam<std::string>(nh, "camera_info_in_topic");
         camera_in_topic = readParam<std::string>(nh, "camera_in_topic");
         lidar_in_topic = readParam<std::string>(nh, "lidar_in_topic");
         dist_cut_off = readParam<int>(nh, "dist_cut_off");
 
-        camInfo_sub = new message_filters::Subscriber<sensor_msgs::CameraInfo>(nh, camera_info_in_topic, 1);
         cloud_sub =  new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh, lidar_in_topic, 1);
         image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, camera_in_topic, 1);
         cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/velodyne_out_cloud", 1);
         image_pub = nh.advertise<sensor_msgs::Image>("/projected_image", 1);
 
-        sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *camInfo_sub, *cloud_sub, *image_sub);
-        sync->registerCallback(boost::bind(&lidarImageProjection::callback, this, _1, _2, _3));
+        sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *cloud_sub, *image_sub);
+        sync->registerCallback(boost::bind(&lidarImageProjection::callback, this, _1, _2));
 
         C_T_L = Eigen::Matrix4d::Identity();
         c_R_l = cv::Mat::zeros(3, 3, CV_64F);
@@ -145,6 +143,33 @@ public:
         L_R_C_quatn = Eigen::Quaterniond(L_R_C);
         cv::Rodrigues(c_R_l, rvec);
         cv::eigen2cv(C_t_L, tvec);
+
+        cam_config_file_path = readParam<std::string>(nh, "cam_config_file_path");
+        readCameraParams(cam_config_file_path,
+                         image_height,
+                         image_width,
+                         distCoeff,
+                         projection_matrix);
+    }
+
+    void readCameraParams(std::string cam_config_file_path,
+                          int &image_height,
+                          int &image_width,
+                          cv::Mat &D,
+                          cv::Mat &K) {
+        cv::FileStorage fs_cam_config(cam_config_file_path, cv::FileStorage::READ);
+        if(!fs_cam_config.isOpened())
+            std::cerr << "Error: Wrong path: " << cam_config_file_path << std::endl;
+        fs_cam_config["image_height"] >> image_height;
+        fs_cam_config["image_width"] >> image_width;
+        fs_cam_config["k1"] >> D.at<double>(0);
+        fs_cam_config["k2"] >> D.at<double>(1);
+        fs_cam_config["p1"] >> D.at<double>(2);
+        fs_cam_config["p2"] >> D.at<double>(3);
+        fs_cam_config["fx"] >> K.at<double>(0, 0);
+        fs_cam_config["fy"] >> K.at<double>(1, 1);
+        fs_cam_config["cx"] >> K.at<double>(0, 2);
+        fs_cam_config["cy"] >> K.at<double>(1, 2);
     }
 
     template <typename T>
@@ -264,8 +289,7 @@ public:
         }
     }
 
-    void callback(const sensor_msgs::CameraInfoConstPtr &camInfo_msg,
-                  const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
+    void callback(const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
                   const sensor_msgs::ImageConstPtr &image_msg) {
         lidar_frameId = cloud_msg->header.frame_id;
         objectPoints_L.clear();
@@ -276,17 +300,8 @@ public:
 
 
         double fov_x, fov_y;
-        fov_x = 2*atan2(camInfo_msg->height, 2*camInfo_msg->K[0])*180/CV_PI;
-        fov_y = 2*atan2(camInfo_msg->width, 2*camInfo_msg->K[4])*180/CV_PI;
-
-        size_t k = 0;
-        for(size_t i = 0 ; i < 3; i++)
-            for(size_t j = 0; j < 3; j++) {
-                projection_matrix.at<double>(i, j) = camInfo_msg->K[k++];
-            }
-
-        for(size_t i = 0; i < 4; i++)
-            distCoeff.at<double>(i) = camInfo_msg->D[i];
+        fov_x = 2*atan2(image_height, 2*projection_matrix.at<double>(0, 0))*180/CV_PI;
+        fov_y = 2*atan2(image_width, 2*projection_matrix.at<double>(1, 1))*180/CV_PI;
 
         double max_range, min_range;
         max_range = -INFINITY;

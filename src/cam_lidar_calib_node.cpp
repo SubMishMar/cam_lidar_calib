@@ -49,15 +49,13 @@
 #include <fstream>
 #include <iostream>
 
-typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::CameraInfo,
-        sensor_msgs::PointCloud2,
-        sensor_msgs::Image> SyncPolicy;
+typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::PointCloud2,
+                                                        sensor_msgs::Image> SyncPolicy;
 
 class camLidarCalib {
 private:
     ros::NodeHandle nh;
 
-    message_filters::Subscriber<sensor_msgs::CameraInfo> *caminfo_sub;
     message_filters::Subscriber<sensor_msgs::PointCloud2> *cloud_sub;
     message_filters::Subscriber<sensor_msgs::Image> *image_sub;
     message_filters::Synchronizer<SyncPolicy> *sync;
@@ -91,22 +89,23 @@ private:
 
     std::string camera_in_topic;
     std::string lidar_in_topic;
-    std::string camera_info_in_topic;
 
     int num_views;
+
+    std::string cam_config_file_path;
+    int image_width, image_height;
+
 public:
 
 
     camLidarCalib() {
-        camera_info_in_topic = readParam<std::string>(nh, "camera_info_in_topic");
         camera_in_topic = readParam<std::string>(nh, "camera_in_topic");
         lidar_in_topic = readParam<std::string>(nh, "lidar_in_topic");
 
-        caminfo_sub = new message_filters::Subscriber<sensor_msgs::CameraInfo>(nh, camera_info_in_topic, 1);
         cloud_sub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh, lidar_in_topic, 1);
         image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, camera_in_topic, 1);
-        sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *caminfo_sub, *cloud_sub, *image_sub);
-        sync->registerCallback(boost::bind(&camLidarCalib::callback, this, _1, _2, _3));
+        sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *cloud_sub, *image_sub);
+        sync->registerCallback(boost::bind(&camLidarCalib::callback, this, _1, _2));
         cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("velodyne_points_out", 1);
         projection_matrix = cv::Mat::zeros(3, 3, CV_64F);
         distCoeff = cv::Mat::zeros(4, 1, CV_64F);
@@ -128,6 +127,33 @@ public:
                 object_points.emplace_back(cv::Point3f(i*dx, j*dy, 0.0));
 
         result_str = readParam<std::string>(nh, "result_file");
+
+        cam_config_file_path = readParam<std::string>(nh, "cam_config_file_path");
+        readCameraParams(cam_config_file_path,
+                image_height,
+                image_width,
+                distCoeff,
+                projection_matrix);
+    }
+
+    void readCameraParams(std::string cam_config_file_path,
+                          int &image_height,
+                          int &image_width,
+                          cv::Mat &D,
+                          cv::Mat &K) {
+        cv::FileStorage fs_cam_config(cam_config_file_path, cv::FileStorage::READ);
+        if(!fs_cam_config.isOpened())
+            std::cerr << "Error: Wrong path: " << cam_config_file_path << std::endl;
+        fs_cam_config["image_height"] >> image_height;
+        fs_cam_config["image_width"] >> image_width;
+        fs_cam_config["k1"] >> D.at<double>(0);
+        fs_cam_config["k2"] >> D.at<double>(1);
+        fs_cam_config["p1"] >> D.at<double>(2);
+        fs_cam_config["p2"] >> D.at<double>(3);
+        fs_cam_config["fx"] >> K.at<double>(0, 0);
+        fs_cam_config["fy"] >> K.at<double>(1, 1);
+        fs_cam_config["cx"] >> K.at<double>(0, 2);
+        fs_cam_config["cy"] >> K.at<double>(1, 2);
     }
 
     template <typename T>
@@ -197,25 +223,7 @@ public:
         cloud_pub.publish(out_cloud);
     }
 
-    void imageHandler(const sensor_msgs::CameraInfoConstPtr &camInfo_msg,
-                      const sensor_msgs::ImageConstPtr &image_msg) {
-        projection_matrix.at<double>(0, 0) = camInfo_msg->K[0];
-        projection_matrix.at<double>(0, 1) = camInfo_msg->K[1];
-        projection_matrix.at<double>(0, 2) = camInfo_msg->K[2];
-
-        projection_matrix.at<double>(1, 0) = camInfo_msg->K[3];
-        projection_matrix.at<double>(1, 1) = camInfo_msg->K[4];
-        projection_matrix.at<double>(1, 2) = camInfo_msg->K[5];
-
-        projection_matrix.at<double>(2, 1) = camInfo_msg->K[6];
-        projection_matrix.at<double>(2, 1) = camInfo_msg->K[7];
-        projection_matrix.at<double>(2, 2) = camInfo_msg->K[8];
-
-        distCoeff.at<double>(0) = camInfo_msg->D[0];
-        distCoeff.at<double>(1) = camInfo_msg->D[1];
-        distCoeff.at<double>(2) = camInfo_msg->D[2];
-        distCoeff.at<double>(3) = camInfo_msg->D[3];
-
+    void imageHandler(const sensor_msgs::ImageConstPtr &image_msg) {
         try {
             image_in = cv_bridge::toCvShare(image_msg, "bgr8")->image;
             boardDetectedInCam = cv::findChessboardCorners(image_in,
@@ -297,7 +305,6 @@ public:
                                     ceres::AutoDiffCostFunction<CalibrationErrorTerm, 1, 6>
                                     (new CalibrationErrorTerm(lidar_point, normal_i));
                             problem.AddResidualBlock(cost_function, loss_function, R_t.data());
-//                            problem.SetParameterization(quatn.coeffs().data(), quaternion_local_parameterization);
                         }
                     }
 
@@ -377,10 +384,9 @@ public:
         }
     }
 
-    void callback(const sensor_msgs::CameraInfoConstPtr &camInfo_msg,
-                  const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
+    void callback(const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
                   const sensor_msgs::ImageConstPtr &image_msg) {
-        imageHandler(camInfo_msg, image_msg);
+        imageHandler(image_msg);
         cloudHandler(cloud_msg);
         runSolver();
     }
