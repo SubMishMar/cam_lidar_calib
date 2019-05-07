@@ -300,8 +300,8 @@ public:
 
 
         double fov_x, fov_y;
-        fov_x = 2*atan2(image_height, 2*projection_matrix.at<double>(0, 0))*180/CV_PI;
-        fov_y = 2*atan2(image_width, 2*projection_matrix.at<double>(1, 1))*180/CV_PI;
+        fov_x = 2*atan2(image_width, 2*projection_matrix.at<double>(0, 0))*180/CV_PI;
+        fov_y = 2*atan2(image_height, 2*projection_matrix.at<double>(1, 1))*180/CV_PI;
 
         double max_range, min_range;
         max_range = -INFINITY;
