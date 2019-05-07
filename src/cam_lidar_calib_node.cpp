@@ -85,7 +85,7 @@ private:
     std::vector<Eigen::Vector3d> all_normals;
 
     sensor_msgs::PointCloud2 out_cloud;
-    std::string result_str;
+    std::string result_str, result_rpy;
 
     std::string camera_in_topic;
     std::string lidar_in_topic;
@@ -127,6 +127,7 @@ public:
                 object_points.emplace_back(cv::Point3f(i*dx, j*dy, 0.0));
 
         result_str = readParam<std::string>(nh, "result_file");
+        result_rpy = readParam<std::string>(nh, "result_rpy_file");
 
         cam_config_file_path = readParam<std::string>(nh, "cam_config_file_path");
         readCameraParams(cam_config_file_path,
@@ -191,7 +192,7 @@ public:
         pcl::PassThrough<pcl::PointXYZ> pass_y;
         pass_y.setInputCloud(cloud_filtered_x);
         pass_y.setFilterFieldName("y");
-        pass_y.setFilterLimits(-1, 1);
+        pass_y.setFilterLimits(-1.25, 1.25);
         pass_y.filter(*cloud_filtered_y);
 
         /// Plane Segmentation
@@ -289,7 +290,9 @@ public:
                     R_t(3) = Translation(0);
                     R_t(4) = Translation(1);
                     R_t(5) = Translation(2);
-                    /// Step2: Defining the Loss function (Can be NONE)
+                    /// Step2: Defining the Loss function (Can be NULL)
+//                    ceres::LossFunction *loss_function = new ceres::CauchyLoss(1.0);
+//                    ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
                     ceres::LossFunction *loss_function = NULL;
 
                     /// Step 3: Form the Optimization Problem
@@ -325,8 +328,8 @@ public:
                     C_T_L.block(0, 0, 3, 3) = Rotn;
                     C_T_L.block(0, 3, 3, 1) = Eigen::Vector3d(R_t[3], R_t[4], R_t[5]);
 
-                    std::cout << "C_T_L = " << std::endl;
-                    std::cout << C_T_L << std::endl;
+                    std::cout << "RPY = " << Rotn.eulerAngles(0, 1, 2)*180/M_PI << std::endl;
+                    std::cout << "t = " << C_T_L.block(0, 3, 3, 1) << std::endl;
 
                     /// Step 5: Covariance Estimation
                     ceres::Covariance::Options options_cov;
@@ -370,6 +373,11 @@ public:
                     results << C_T_L;
                     results.close();
                     ros::shutdown();
+
+                    std::ofstream results_rpy;
+                    results_rpy.open(result_rpy);
+                    results_rpy << Rotn.eulerAngles(0, 1, 2)*180/M_PI << "\n" << C_T_L.block(0, 3, 3, 1);
+                    results_rpy.close();
                 }
             } else {
                 ROS_WARN_STREAM("Not enough Rotation, view not recorded");
