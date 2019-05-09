@@ -94,16 +94,20 @@ private:
     std::string cam_config_file_path;
     int image_width, image_height;
 
+    std::string camera_name;
+
 public:
     lidarImageProjection() {
         camera_in_topic = readParam<std::string>(nh, "camera_in_topic");
         lidar_in_topic = readParam<std::string>(nh, "lidar_in_topic");
         dist_cut_off = readParam<int>(nh, "dist_cut_off");
-
+        camera_name = readParam<std::string>(nh, "camera_name");
         cloud_sub =  new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh, lidar_in_topic, 1);
         image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, camera_in_topic, 1);
-        cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/velodyne_out_cloud", 1);
-        image_pub = nh.advertise<sensor_msgs::Image>("/projected_image", 1);
+        std::string lidarOutTopic = camera_in_topic + "/velodyne_out_cloud";
+        cloud_pub = nh.advertise<sensor_msgs::PointCloud2>(lidarOutTopic, 1);
+        std::string imageOutTopic = camera_in_topic + "/projected_image";
+        image_pub = nh.advertise<sensor_msgs::Image>(imageOutTopic, 1);
 
         sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *cloud_sub, *image_sub);
         sync->registerCallback(boost::bind(&lidarImageProjection::callback, this, _1, _2));
@@ -258,7 +262,7 @@ public:
         tf::quaternionEigenToTF(L_R_C_quatn, q);
         transform.setOrigin(tf::Vector3(L_t_C(0), L_t_C(1), L_t_C(2)));
         transform.setRotation(q);
-        br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), lidar_frameId, "camera"));
+        br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), lidar_frameId, camera_name));
     }
 
     void colorPointCloud() {

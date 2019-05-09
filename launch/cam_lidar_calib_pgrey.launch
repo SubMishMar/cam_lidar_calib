@@ -9,17 +9,17 @@
   <param name = "checkerboard_rows" type = "int" value = "9" />
   <param name = "checkerboard_cols" type = "int" value = "6" />
 
-  <param name = "result_file" type="string" value="$(find cam_lidar_calib)/result/C_T_L.txt"/>
-  <param name = "result_rpy_file" type="string" value="$(find cam_lidar_calib)/result/rpy_txyz.txt"/>
+  <param name = "result_file" type="string" value="$(find cam_lidar_calib)/result/C_T_L_pgrey.txt"/>
+  <param name = "result_rpy_file" type="string" value="$(find cam_lidar_calib)/result/rpy_txyz_pgrey.txt"/>
 
   <param name = "min_points_on_plane" type="int" value="450"/>
   <param name = "num_views" type="int" value="23"/>
 
-  <param name = "camera_in_topic" type="string" value="/pylon_camera_node/image_raw"/>
+  <param name = "camera_in_topic" type="string" value="/camera/image_color"/>
   <param name = "lidar_in_topic" type="string" value="/velodyne_points"/>
 
-  <param name = "cam_config_file_path" type="string" value="$(find stereo_camera_calibration)/config/basler_config.yaml" />
+  <param name = "cam_config_file_path" type="string" value="$(find stereo_camera_calibration)/config/pointgrey_config.yaml" />
 
-  <node  pkg="cam_lidar_calib" name="cam_lidar_calib" type="cam_lidar_calib_node" output="screen">
+  <node  pkg="cam_lidar_calib" name="cam_lidar_calib_pointgrey" type="cam_lidar_calib_node" output="screen">
   </node>
 </launch>
