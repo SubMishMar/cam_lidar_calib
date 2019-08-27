@@ -236,12 +236,13 @@ public:
                                       cv::Size(checkerboard_cols, checkerboard_rows),
                                       image_points,
                                       boardDetectedInCam);
-            if(image_points.size() == object_points.size()){
+
+            if(image_points.size() == object_points.size() && boardDetectedInCam){
                 cv::solvePnP(object_points, image_points, projection_matrix, distCoeff, rvec, tvec, false, CV_ITERATIVE);
                 projected_points.clear();
                 cv::projectPoints(object_points, rvec, tvec, projection_matrix, distCoeff, projected_points, cv::noArray());
                 for(int i = 0; i < projected_points.size(); i++){
-                    cv::circle(image_in, projected_points[i], 16, cv::Scalar(0, 255, 0), 10, cv::LINE_AA, 0);
+                    cv::circle(image_in, projected_points[i], 2, cv::Scalar(0, 255, 0), -1, cv::LINE_AA, 0);
                 }
                 cv::Rodrigues(rvec, C_R_W);
                 cv::cv2eigen(C_R_W, c_R_w);
@@ -251,8 +252,11 @@ public:
 
                 r3 = c_R_w.block<3,1>(0,2);
                 Nc = (r3.dot(c_t_w))*r3;
+                runSolver();
+            } else {
+                ROS_WARN_STREAM("Board not detected and img pts != obj pts, view not considered for  data logging");
             }
-            cv::resize(image_in, image_resized, cv::Size(), 0.25, 0.25);
+            cv::resize(image_in, image_resized, cv::Size(), 1, 1);
             cv::imshow("view", image_resized);
             cv::waitKey(10);
         } catch (cv_bridge::Exception& e) {
@@ -262,8 +266,9 @@ public:
     }
 
     void runSolver() {
-        if (lidar_points.size() > min_points_on_plane && boardDetectedInCam) {
-            if (r3.dot(r3_old) < 0.9) {
+        if (lidar_points.size() > min_points_on_plane) {
+            ROS_INFO_STREAM("Dot Prod: " << r3.dot(r3_old));
+            if (r3.dot(r3_old) < 0.8) {
                 r3_old = r3;
                 all_normals.push_back(Nc);
                 all_lidar_points.push_back(lidar_points);
@@ -379,24 +384,16 @@ public:
                     results_rpy << Rotn.eulerAngles(0, 1, 2)*180/M_PI << "\n" << C_T_L.block(0, 3, 3, 1);
                     results_rpy.close();
                 }
-            } else {
-                ROS_WARN_STREAM("Not enough Rotation, view not recorded");
             }
         } else {
-            if(!boardDetectedInCam)
-                ROS_WARN_STREAM("Checker-board not detected in Image.");
-            else {
-                ROS_WARN_STREAM("Checker Board Detected in Image?: " << boardDetectedInCam << "\t" <<
-                "No of LiDAR pts: " << lidar_points.size() << " (Check if this is less than threshold) ");
-            }
+            ROS_WARN_STREAM("Insuff lidar pts");
         }
     }
 
     void callback(const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
                   const sensor_msgs::ImageConstPtr &image_msg) {
-        imageHandler(image_msg);
         cloudHandler(cloud_msg);
-        runSolver();
+        imageHandler(image_msg);
     }
 };
 
