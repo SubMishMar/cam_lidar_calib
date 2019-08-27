@@ -12,7 +12,7 @@
   
   <param name = "dist_cut_off" type="int" value="5"/>
 
-  <param name = "cam_config_file_path" type="string" value="$(find stereo_camera_calibration)/config/basler_config.yaml" />
+  <param name = "cam_config_file_path" type="string" value="$(find cam_lidar_calib)/config/basler_config.yaml" />
 
   <node  pkg="cam_lidar_calib" name="cam_lidar_proj_basler" type="cam_lidar_proj_node" output="screen">
   </node>

@@ -143,8 +143,7 @@ public:
                           cv::Mat &D,
                           cv::Mat &K) {
         cv::FileStorage fs_cam_config(cam_config_file_path, cv::FileStorage::READ);
-        if(!fs_cam_config.isOpened())
-            std::cerr << "Error: Wrong path: " << cam_config_file_path << std::endl;
+        ROS_ASSERT(fs_cam_config.isOpened());
         fs_cam_config["image_height"] >> image_height;
         fs_cam_config["image_width"] >> image_width;
         fs_cam_config["k1"] >> D.at<double>(0);
@@ -267,8 +266,8 @@ public:
 
     void runSolver() {
         if (lidar_points.size() > min_points_on_plane) {
-            ROS_INFO_STREAM("Dot Prod: " << r3.dot(r3_old));
-            if (r3.dot(r3_old) < 0.8) {
+            if (r3.dot(r3_old) < 0.9) {
+                ROS_INFO_STREAM("Dot Prod: " << r3.dot(r3_old));
                 r3_old = r3;
                 all_normals.push_back(Nc);
                 all_lidar_points.push_back(lidar_points);
