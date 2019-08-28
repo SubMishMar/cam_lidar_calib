@@ -4,7 +4,7 @@ The package is used to calibrate a Velodyne VLP-32 LiDAR with a Basler Camera. T
 
 
 ## Important notes
-Sometimes, you may observe that the checkerboard is well detected in the image and yet the calibration results are awefully off. In that case, please check is the correct plane is detected in the pointcloud. This is provided as an output topic. Tune the pass through filters provided in the function which handles the point cloud data (which was called cloudHandler when the readme was updated) and also the param named min_points_on_plane in the calibration launch file.
+Sometimes, you may observe that the checkerboard is well detected in the image and yet the calibration results are awefully off. In that case, please check if the correct plane is detected in the pointcloud. This is provided as an output topic. Tune the pass through filters provided in the function which handles the point cloud data (which was called cloudHandler when the readme was updated) and also the param named min_points_on_plane in the calibration launch file.
 
 ## Contents
 1. [Setup](#setup)
