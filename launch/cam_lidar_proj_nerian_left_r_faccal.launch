@@ -6,8 +6,10 @@
 
     <param name= "project_only_plane" type="bool" value="false"/>
 
-    <!--<param name = "camera_in_topic" type="string" value="/nerian_stereo/left_image"/>-->
-    <param name = "camera_in_topic" type="string" value="/nerian_stereo/disparity_map"/>
+    <param name = "camera_in_topic" type="string"
+           value="/nerian_stereo/left_image"/>
+    <!--<param name = "camera_in_topic" type="string"
+            value="/nerian_stereo/disparity_map"/>-->
     <param name = "lidar_in_topic" type="string" value="/velodyne_points"/>
     <param name = "camera_name" type="string" value="nerian_left_r_faccal"/>
 

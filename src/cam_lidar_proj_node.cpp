@@ -282,7 +282,11 @@ public:
 
     void colorLidarPointsOnImage(double min_range,
             double max_range) {
-
+        cv::Mat image_out;
+        if(image_in.type() == 0)
+            cv::cvtColor(image_in, image_out, CV_GRAY2BGR);
+        else
+            image_out = image_in;
         for(size_t i = 0; i < imagePoints.size(); i++) {
             double X = objectPoints_C[i].x;
             double Y = objectPoints_C[i].y;
@@ -290,9 +294,11 @@ public:
             double range = sqrt(X*X + Y*Y + Z*Z);
             double red_field = 255*(range - min_range)/(max_range - min_range);
             double green_field = 255*(max_range - range)/(max_range - min_range);
-            cv::circle(image_in, imagePoints[i], 3,
-                       CV_RGB(red_field, green_field, 0), -1, 8, 0);
+            cv::circle(image_out, imagePoints[i], 1,
+                       cv::Scalar(0, green_field, red_field), -1, 1, 0);
         }
+        cv::imshow("view2", image_out);
+        cv::waitKey(1);
     }
 
     void callback(const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
@@ -302,9 +308,12 @@ public:
         objectPoints_C.clear();
         imagePoints.clear();
         publishTransforms();
-//        image_in = cv::Mat::zeros(cv::Size(image_msg->width, image_height),
-//                CV_16UC1);
-        cv::Mat image_in = cv_bridge::toCvShare(image_msg, "mono16")->image;
+        if(image_msg->encoding == "mono16" || image_msg->encoding == "mono8") {
+            image_in = cv_bridge::toCvShare(image_msg, "mono8")->image;
+            image_in = image_in*16;
+        }  else {
+            image_in = cv_bridge::toCvShare(image_msg, "bgr8")->image;
+        }
         cv::imshow("view", image_in);
         cv::waitKey(1);
         double fov_x, fov_y;
@@ -380,11 +389,10 @@ public:
         cloud_pub.publish(out_cloud_ros);
 
         /// Color Lidar Points on the image a/c to distance
-//        colorLidarPointsOnImage(min_range, max_range);
-//        cv::Mat image_out_gray;
-//        cv::cvtColor(image_in, image_out_gray, cv::COLOR_RGB2GRAY);
+        colorLidarPointsOnImage(min_range, max_range);
+
 //        sensor_msgs::ImagePtr msg =
-//                cv_bridge::CvImage(std_msgs::Header(), "bgr8", image_out_gray).toImageMsg();
+//                cv_bridge::CvImage(std_msgs::Header(), "bgr8", image_out).toImageMsg();
 //        image_pub.publish(msg);
 //        cv::Mat image_resized;
 //        cv::resize(lidarPtsImg, image_resized, cv::Size(), 0.25, 0.25);

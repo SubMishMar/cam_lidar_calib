@@ -14,6 +14,7 @@
 
   <param name = "min_points_on_plane" type="int" value="1200"/>
   <param name = "num_views" type="int" value="30"/>
+  <param name = "max_time_diff" type="double" value="0.005"/>
 
   <param name = "camera_in_topic" type="string" value="/nerian_stereo/left_image"/>
   <param name = "lidar_in_topic" type="string" value="/velodyne_points"/>

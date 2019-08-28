@@ -95,6 +95,8 @@ private:
     std::string cam_config_file_path;
     int image_width, image_height;
 
+    double max_time_diff;
+
 public:
 
 
@@ -121,6 +123,7 @@ public:
         checkerboard_cols = readParam<int>(nh, "checkerboard_cols");
         min_points_on_plane = readParam<int>(nh, "min_points_on_plane");
         num_views = readParam<int>(nh, "num_views");
+        max_time_diff = readParam<double>(nh, "max_time_diff");
 
         for(int i = 0; i < checkerboard_rows; i++)
             for (int j = 0; j < checkerboard_cols; j++)
@@ -394,8 +397,15 @@ public:
 
     void callback(const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
                   const sensor_msgs::ImageConstPtr &image_msg) {
-        cloudHandler(cloud_msg);
-        imageHandler(image_msg);
+        double time1 = cloud_msg->header.stamp.toSec();
+        double time2 = image_msg->header.stamp.toSec();
+        double time_diff = time1 - time2;
+        if(fabs(time1 - time2) <= max_time_diff) {
+            cloudHandler(cloud_msg);
+            imageHandler(image_msg);
+        } else {
+            ROS_WARN_STREAM("Time diff. too high");
+        }
     }
 };
 
