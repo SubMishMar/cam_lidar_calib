@@ -2,6 +2,10 @@
 ![alt text](images/coloredPointCloud.png "Colored Point Cloud and LiDAR pts projected on image")
 The package is used to calibrate a Velodyne VLP-32 LiDAR with a Basler Camera. The methods used are fairly basic and sould work for any kind of 3D LiDARs and cameras. This software is an implementation of the work presented in the paper titled [Extrinsic calibration of a 3d laser scanner and an omnidirectional camera](http://robots.engin.umich.edu/publications/gpandey-2010a.pdf). Here is a [Dataset](https://drive.google.com/a/tamu.edu/file/d/19Ke-oOhqkPKJBACmrfba4R5-w71_wrvT/view?usp=sharing).
 
+
+## Important notes
+Sometimes, you may observe that the checkerboard is well detected in the image and yet the calibration results are awefully off. In that case, please check if the correct plane is detected in the pointcloud. This is provided as an output topic. Tune the pass through filters provided in the function which handles the point cloud data (which was called cloudHandler when the readme was updated) and also the param named min_points_on_plane in the calibration launch file.
+
 ## Contents
 1. [Setup](#setup)
 3. [Calibration](#Calibration)
@@ -34,4 +38,5 @@ For each view that can add to the constraint, we have one vector normal to the c
 
 ## Cross Projection
 [![Alt text](https://img.youtube.com/vi/aZzL0kT2G5w/0.jpg)](https://www.youtube.com/watch?v=aZzL0kT2G5w)
-To check the veracity of the external calibration parameter estimation procedure, I use the parameters to project the lidar points on the image and color the point cloud. The results are shown in the video above. I am still looking for methods to quantify how good or bad the result is.
+To check the veracity of the external calibration parameter estimation procedure, I use the parameters to project the lidar points on the image and color the point cloud. The results are shown in the video above. 
+
