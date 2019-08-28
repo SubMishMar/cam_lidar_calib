@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<launch>
+
+  <param name ="/use_sim_time" value="true"/>
+
+  <param name = "dx" type="double" value="0.075"/>
+  <param name = "dy" type="double" value="0.075"/>
+
+  <param name = "checkerboard_rows" type = "int" value = "9" />
+  <param name = "checkerboard_cols" type = "int" value = "6" />
+
+  <param name = "result_file" type="string" value="$(find cam_lidar_calib)/result/C_T_L_nerian_left_r_faccal.txt"/>
+  <param name = "result_rpy_file" type="string" value="$(find cam_lidar_calib)/result/rpy_txyz_nerian_left_r_faccal.txt"/>
+
+  <param name = "min_points_on_plane" type="int" value="1200"/>
+  <param name = "num_views" type="int" value="30"/>
+
+  <param name = "camera_in_topic" type="string" value="/nerian_stereo/left_image"/>
+  <param name = "lidar_in_topic" type="string" value="/velodyne_points"/>
+
+  <param name = "cam_config_file_path" type="string" value="$(find cam_lidar_calib)/config/nerian_left_r_faccal.yaml" />
+
+  <node  pkg="cam_lidar_calib" name="cam_lidar_calib" type="cam_lidar_calib_node" output="screen">
+  </node>
+</launch>

@@ -135,6 +135,8 @@ public:
                 image_width,
                 distCoeff,
                 projection_matrix);
+        ROS_INFO_STREAM("Projection Matrix: \n" << projection_matrix);
+        ROS_INFO_STREAM("Distortion Coeff: \n" << distCoeff);
     }
 
     void readCameraParams(std::string cam_config_file_path,
@@ -186,7 +188,7 @@ public:
         pcl::PassThrough<pcl::PointXYZ> pass_x;
         pass_x.setInputCloud(in_cloud);
         pass_x.setFilterFieldName("x");
-        pass_x.setFilterLimits(0.0, 6.0);
+        pass_x.setFilterLimits(0.50, 6.0);
         pass_x.filter(*cloud_filtered_x);
         pcl::PassThrough<pcl::PointXYZ> pass_y;
         pass_y.setInputCloud(cloud_filtered_x);
@@ -267,6 +269,7 @@ public:
     void runSolver() {
         if (lidar_points.size() > min_points_on_plane) {
             if (r3.dot(r3_old) < 0.9) {
+                ROS_INFO_STREAM("No of planar pts: " << lidar_points.size());
                 ROS_INFO_STREAM("Dot Prod: " << r3.dot(r3_old));
                 r3_old = r3;
                 all_normals.push_back(Nc);
