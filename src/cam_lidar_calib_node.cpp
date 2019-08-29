@@ -271,9 +271,9 @@ public:
 
     void runSolver() {
         if (lidar_points.size() > min_points_on_plane) {
-            if (r3.dot(r3_old) < 0.9) {
-                ROS_INFO_STREAM("No of planar pts: " << lidar_points.size());
-                ROS_INFO_STREAM("Dot Prod: " << r3.dot(r3_old));
+            if (r3.dot(r3_old) < 0.8) {
+//                ROS_INFO_STREAM("No of planar pts: " << lidar_points.size());
+//                ROS_INFO_STREAM("Dot Prod: " << r3.dot(r3_old));
                 r3_old = r3;
                 all_normals.push_back(Nc);
                 all_lidar_points.push_back(lidar_points);

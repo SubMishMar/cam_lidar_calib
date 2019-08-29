@@ -13,7 +13,7 @@
     <param name = "lidar_in_topic" type="string" value="/velodyne_points"/>
     <param name = "camera_name" type="string" value="nerian_left_r_faccal"/>
 
-    <param name = "dist_cut_off" type="int" value="5"/>
+    <param name = "dist_cut_off" type="int" value="10"/>
 
     <param name = "cam_config_file_path" type="string" value="$(find cam_lidar_calib)/config/nerian_left_r_faccal.yaml" />
 

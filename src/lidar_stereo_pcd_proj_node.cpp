@@ -118,9 +118,12 @@ public:
         double time2 = cloud1_msg->header.stamp.toSec();
         double time_diff = time1 - time2;
         if(fabs(time1-time2)<0.001) {
+            ROS_WARN_STREAM("Time diff within threshold");
             std::string frame_id_ref = cloud1_msg->header.frame_id;
-            pcl::PointCloud<pcl::PointXYZI>::Ptr in_cloud2(new pcl::PointCloud<pcl::PointXYZI>);
-            pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_cloud2(new pcl::PointCloud<pcl::PointXYZI>);
+            pcl::PointCloud<pcl::PointXYZRGB>::Ptr
+            in_cloud2(new pcl::PointCloud<pcl::PointXYZRGB>);
+            pcl::PointCloud<pcl::PointXYZRGB>::Ptr
+            transformed_cloud2(new pcl::PointCloud<pcl::PointXYZRGB>);
 
             in_cloud2->points.clear();
             transformed_cloud2->points.clear();
