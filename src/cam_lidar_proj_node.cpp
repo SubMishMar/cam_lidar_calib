@@ -88,7 +88,6 @@ private:
 
     pcl::PointCloud<pcl::PointXYZRGB> out_cloud_pcl;
     cv::Mat image_in;
-
     int dist_cut_off;
 
     std::string cam_config_file_path;
@@ -297,6 +296,8 @@ public:
             cv::circle(image_out, imagePoints[i], 1,
                        cv::Scalar(0, green_field, red_field), -1, 1, 0);
         }
+        cv::circle(image_out, cv::Point2i(450, 400), 6,
+                   cv::Scalar(0, 255, 255), -1, 1, 0);
         cv::imshow("view2", image_out);
         cv::waitKey(1);
     }
@@ -309,13 +310,23 @@ public:
         imagePoints.clear();
         publishTransforms();
         if(image_msg->encoding == "mono16" || image_msg->encoding == "mono8") {
-            image_in = cv_bridge::toCvShare(image_msg, "mono8")->image;
-            image_in = image_in*16;
+            image_in = cv_bridge::toCvShare(image_msg, image_msg->encoding)->image;
+            cv::imshow("view", image_in*16);
+            cv::waitKey(1);
+//            double disp = (double)image_in.at<uchar>(450, 400)/16.0;
+//            std::cout << disp << std::endl;
+//            std::ofstream myfile;
+//            myfile.open("/home/subodh/catkin_ws/src/cam_lidar_calib/result/csv_out.csv");
+//            myfile<< cv::format(image_in, cv::Formatter::FMT_CSV) << std::endl;
+//            myfile.close();
+//            ros::shutdown();
+
         }  else {
             image_in = cv_bridge::toCvShare(image_msg, "bgr8")->image;
+            cv::imshow("view", image_in);
+            cv::waitKey(1);
         }
-        cv::imshow("view", image_in);
-        cv::waitKey(1);
+
         double fov_x, fov_y;
         fov_x = 2*atan2(image_width, 2*projection_matrix.at<double>(0, 0))*180/CV_PI;
         fov_y = 2*atan2(image_height, 2*projection_matrix.at<double>(1, 1))*180/CV_PI;

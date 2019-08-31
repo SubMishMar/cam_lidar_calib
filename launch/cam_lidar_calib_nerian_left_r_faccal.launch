@@ -13,7 +13,7 @@
   <param name = "result_rpy_file" type="string" value="$(find cam_lidar_calib)/result/rpy_txyz_nerian_left_r_faccal.txt"/>
 
   <param name = "min_points_on_plane" type="int" value="1200"/>
-  <param name = "num_views" type="int" value="20"/>
+  <param name = "num_views" type="int" value="15"/>
   <param name = "max_time_diff" type="double" value="0.0025"/>
 
   <param name = "camera_in_topic" type="string" value="/nerian_stereo/left_image"/>
