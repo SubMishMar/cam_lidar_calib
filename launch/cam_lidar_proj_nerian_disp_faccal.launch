@@ -17,6 +17,13 @@
 
     <param name = "cam_config_file_path" type="string" value="$(find cam_lidar_calib)/config/nerian_left_r_faccal.yaml" />
 
+    <param name = "x_offset" type="double" value="0.00"/>
+    <param name = "y_offset" type="double" value="0.00"/>
+    <param name = "z_offset" type="double" value="0.00"/>
+    <param name = "roll_offset" type="double" value="0.00"/>
+    <param name = "pitch_offset" type="double" value="0.00"/>
+    <param name = "yaw_offset" type="double" value="0.00"/>
+
     <node  pkg="cam_lidar_calib" name="cam_lidar_proj" type="cam_lidar_proj_node" output="screen">
     </node>
 </launch>

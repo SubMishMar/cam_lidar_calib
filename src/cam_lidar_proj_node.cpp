@@ -94,6 +94,8 @@ private:
     int image_width, image_height;
 
     std::string camera_name;
+    double x_offset, y_offset, z_offset;
+    double roll_offset, pitch_offset, yaw_offset;
 
 public:
     lidarImageProjection() {
@@ -101,6 +103,14 @@ public:
         lidar_in_topic = readParam<std::string>(nh, "lidar_in_topic");
         dist_cut_off = readParam<int>(nh, "dist_cut_off");
         camera_name = readParam<std::string>(nh, "camera_name");
+
+        x_offset = readParam<double>(nh, "x_offset");
+        y_offset = readParam<double>(nh, "y_offset");
+        z_offset = readParam<double>(nh, "z_offset");
+        roll_offset = readParam<double>(nh, "roll_offset");
+        pitch_offset = readParam<double>(nh, "pitch_offset");
+        yaw_offset = readParam<double>(nh, "yaw_offset");
+
         cloud_sub =  new message_filters::Subscriber<sensor_msgs::PointCloud2>(nh, lidar_in_topic, 1);
         image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, camera_in_topic, 1);
         std::string lidarOutTopic = camera_in_topic + "/velodyne_out_cloud";
@@ -155,6 +165,32 @@ public:
                          projection_matrix);
         ROS_INFO_STREAM("Projection Matrix: \n" << projection_matrix);
         ROS_INFO_STREAM("Distortion Coeff: \n" << distCoeff);
+        addOffsetToCalib(C_T_L);
+    }
+
+    void addOffsetToCalib(Eigen::Matrix4d &T) {
+        double roll_offset_rad = roll_offset*M_PI/180;
+        double pitch_offset_rad = pitch_offset*M_PI/180;
+        double yaw_offset_rad = yaw_offset*M_PI/180;
+
+        Eigen::Matrix3d R = T.block(0, 0, 3, 3);
+        Eigen::Vector3d ea = R.eulerAngles(0, 1, 2);
+        Eigen::Vector3d new_ea = ea +
+                                 Eigen::Vector3d(roll_offset_rad,
+                                                 pitch_offset_rad,
+                                                 yaw_offset_rad);
+
+        Eigen::Quaterniond quat_new =
+                Eigen::AngleAxisd(new_ea[0], Eigen::Vector3d::UnitX())
+                * Eigen::AngleAxisd(new_ea[1], Eigen::Vector3d::UnitY())
+                * Eigen::AngleAxisd(new_ea[2], Eigen::Vector3d::UnitZ());
+        Eigen::Matrix3d R_new = quat_new.toRotationMatrix();
+        Eigen::Vector3d t = T.block(0, 3, 3, 1) +
+                            Eigen::Vector3d(x_offset,
+                                            y_offset,
+                                            z_offset);
+        T.block(0, 0, 3, 3) = R_new;
+        T.block(0, 3, 3, 1) = t;
     }
 
     void readCameraParams(std::string cam_config_file_path,
@@ -286,6 +322,8 @@ public:
             cv::cvtColor(image_in, image_out, CV_GRAY2BGR);
         else
             image_out = image_in;
+        std::ofstream myfile;
+        myfile.open("/home/subodh/catkin_ws/src/cam_lidar_calib/result/csv_lidar_out.csv");
         for(size_t i = 0; i < imagePoints.size(); i++) {
             double X = objectPoints_C[i].x;
             double Y = objectPoints_C[i].y;
@@ -295,11 +333,12 @@ public:
             double green_field = 255*(max_range - range)/(max_range - min_range);
             cv::circle(image_out, imagePoints[i], 1,
                        cv::Scalar(0, green_field, red_field), -1, 1, 0);
+            myfile << imagePoints[i].x << "," << imagePoints[i].y << "," << Z << "\n";
         }
-        cv::circle(image_out, cv::Point2i(450, 400), 6,
-                   cv::Scalar(0, 255, 255), -1, 1, 0);
         cv::imshow("view2", image_out);
-        cv::waitKey(1);
+        cv::waitKey(0);
+        myfile.close();
+        ros::shutdown();
     }
 
     void callback(const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
@@ -313,13 +352,10 @@ public:
             image_in = cv_bridge::toCvShare(image_msg, image_msg->encoding)->image;
             cv::imshow("view", image_in*16);
             cv::waitKey(1);
-//            double disp = (double)image_in.at<uchar>(450, 400)/16.0;
-//            std::cout << disp << std::endl;
-//            std::ofstream myfile;
-//            myfile.open("/home/subodh/catkin_ws/src/cam_lidar_calib/result/csv_out.csv");
-//            myfile<< cv::format(image_in, cv::Formatter::FMT_CSV) << std::endl;
-//            myfile.close();
-//            ros::shutdown();
+            std::ofstream myfile;
+            myfile.open("/home/subodh/catkin_ws/src/cam_lidar_calib/result/csv_out.csv");
+            myfile<< cv::format(image_in, cv::Formatter::FMT_CSV) << std::endl;
+            myfile.close();
 
         }  else {
             image_in = cv_bridge::toCvShare(image_msg, "bgr8")->image;
