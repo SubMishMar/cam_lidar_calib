@@ -10,9 +10,9 @@
   <param name = "lidar_in_topic" type="string" value="/velodyne_points"/>
   <param name = "camera_name" type="string" value="pointgrey"/>
 
-  <param name = "dist_cut_off" type="int" value="3"/>
+  <param name = "dist_cut_off" type="int" value="5"/>
 
- <param name = "cam_config_file_path" type="string" value="$(find cam_lidar_calib)/config/pointgrey_config.yaml" />
+ <param name = "cam_config_file_path" type="string" value="$(find stereo_camera_calibration)/config/pointgrey_config.yaml" />
 
   <node  pkg="cam_lidar_calib" name="cam_lidar_proj_pgrey" type="cam_lidar_proj_node" output="screen">
   </node>

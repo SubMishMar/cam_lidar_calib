@@ -95,8 +95,6 @@ private:
     std::string cam_config_file_path;
     int image_width, image_height;
 
-    double max_time_diff;
-
 public:
 
 
@@ -123,7 +121,6 @@ public:
         checkerboard_cols = readParam<int>(nh, "checkerboard_cols");
         min_points_on_plane = readParam<int>(nh, "min_points_on_plane");
         num_views = readParam<int>(nh, "num_views");
-        max_time_diff = readParam<double>(nh, "max_time_diff");
 
         for(int i = 0; i < checkerboard_rows; i++)
             for (int j = 0; j < checkerboard_cols; j++)
@@ -138,8 +135,6 @@ public:
                 image_width,
                 distCoeff,
                 projection_matrix);
-        ROS_INFO_STREAM("Projection Matrix: \n" << projection_matrix);
-        ROS_INFO_STREAM("Distortion Coeff: \n" << distCoeff);
     }
 
     void readCameraParams(std::string cam_config_file_path,
@@ -148,7 +143,8 @@ public:
                           cv::Mat &D,
                           cv::Mat &K) {
         cv::FileStorage fs_cam_config(cam_config_file_path, cv::FileStorage::READ);
-        ROS_ASSERT(fs_cam_config.isOpened());
+        if(!fs_cam_config.isOpened())
+            std::cerr << "Error: Wrong path: " << cam_config_file_path << std::endl;
         fs_cam_config["image_height"] >> image_height;
         fs_cam_config["image_width"] >> image_width;
         fs_cam_config["k1"] >> D.at<double>(0);
@@ -191,7 +187,7 @@ public:
         pcl::PassThrough<pcl::PointXYZ> pass_x;
         pass_x.setInputCloud(in_cloud);
         pass_x.setFilterFieldName("x");
-        pass_x.setFilterLimits(0.50, 6.0);
+        pass_x.setFilterLimits(0.0, 6.0);
         pass_x.filter(*cloud_filtered_x);
         pcl::PassThrough<pcl::PointXYZ> pass_y;
         pass_y.setInputCloud(cloud_filtered_x);
@@ -240,13 +236,12 @@ public:
                                       cv::Size(checkerboard_cols, checkerboard_rows),
                                       image_points,
                                       boardDetectedInCam);
-
-            if(image_points.size() == object_points.size() && boardDetectedInCam){
+            if(image_points.size() == object_points.size()){
                 cv::solvePnP(object_points, image_points, projection_matrix, distCoeff, rvec, tvec, false, CV_ITERATIVE);
                 projected_points.clear();
                 cv::projectPoints(object_points, rvec, tvec, projection_matrix, distCoeff, projected_points, cv::noArray());
                 for(int i = 0; i < projected_points.size(); i++){
-                    cv::circle(image_in, projected_points[i], 2, cv::Scalar(0, 255, 0), -1, cv::LINE_AA, 0);
+                    cv::circle(image_in, projected_points[i], 16, cv::Scalar(0, 255, 0), 10, cv::LINE_AA, 0);
                 }
                 cv::Rodrigues(rvec, C_R_W);
                 cv::cv2eigen(C_R_W, c_R_w);
@@ -256,11 +251,8 @@ public:
 
                 r3 = c_R_w.block<3,1>(0,2);
                 Nc = (r3.dot(c_t_w))*r3;
-                runSolver();
-            } else {
-                ROS_WARN_STREAM("Board not detected and img pts != obj pts, view not considered for  data logging");
             }
-            cv::resize(image_in, image_resized, cv::Size(), 1, 1);
+            cv::resize(image_in, image_resized, cv::Size(), 0.25, 0.25);
             cv::imshow("view", image_resized);
             cv::waitKey(10);
         } catch (cv_bridge::Exception& e) {
@@ -270,10 +262,8 @@ public:
     }
 
     void runSolver() {
-        if (lidar_points.size() > min_points_on_plane) {
-            if (r3.dot(r3_old) < 0.8) {
-//                ROS_INFO_STREAM("No of planar pts: " << lidar_points.size());
-//                ROS_INFO_STREAM("Dot Prod: " << r3.dot(r3_old));
+        if (lidar_points.size() > min_points_on_plane && boardDetectedInCam) {
+            if (r3.dot(r3_old) < 0.9) {
                 r3_old = r3;
                 all_normals.push_back(Nc);
                 all_lidar_points.push_back(lidar_points);
@@ -389,23 +379,24 @@ public:
                     results_rpy << Rotn.eulerAngles(0, 1, 2)*180/M_PI << "\n" << C_T_L.block(0, 3, 3, 1);
                     results_rpy.close();
                 }
+            } else {
+                ROS_WARN_STREAM("Not enough Rotation, view not recorded");
             }
         } else {
-            ROS_WARN_STREAM("Insuff lidar pts");
+            if(!boardDetectedInCam)
+                ROS_WARN_STREAM("Checker-board not detected in Image.");
+            else {
+                ROS_WARN_STREAM("Checker Board Detected in Image?: " << boardDetectedInCam << "\t" <<
+                "No of LiDAR pts: " << lidar_points.size() << " (Check if this is less than threshold) ");
+            }
         }
     }
 
     void callback(const sensor_msgs::PointCloud2ConstPtr &cloud_msg,
                   const sensor_msgs::ImageConstPtr &image_msg) {
-        double time1 = cloud_msg->header.stamp.toSec();
-        double time2 = image_msg->header.stamp.toSec();
-        double time_diff = time1 - time2;
-        if(fabs(time1 - time2) <= max_time_diff) {
-            cloudHandler(cloud_msg);
-            imageHandler(image_msg);
-        } else {
-            ROS_WARN_STREAM("Time diff. too high");
-        }
+        imageHandler(image_msg);
+        cloudHandler(cloud_msg);
+        runSolver();
     }
 };
 
