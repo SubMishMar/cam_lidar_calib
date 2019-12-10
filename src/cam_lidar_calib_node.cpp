@@ -108,7 +108,7 @@ public:
         sync->registerCallback(boost::bind(&camLidarCalib::callback, this, _1, _2));
         cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("velodyne_points_out", 1);
         projection_matrix = cv::Mat::zeros(3, 3, CV_64F);
-        distCoeff = cv::Mat::zeros(4, 1, CV_64F);
+        distCoeff = cv::Mat::zeros(5, 1, CV_64F);
         boardDetectedInCam = false;
         tvec = cv::Mat::zeros(3, 1, CV_64F);
         rvec = cv::Mat::zeros(3, 1, CV_64F);
@@ -151,6 +151,7 @@ public:
         fs_cam_config["k2"] >> D.at<double>(1);
         fs_cam_config["p1"] >> D.at<double>(2);
         fs_cam_config["p2"] >> D.at<double>(3);
+        fs_cam_config["k3"] >> D.at<double>(4);
         fs_cam_config["fx"] >> K.at<double>(0, 0);
         fs_cam_config["fy"] >> K.at<double>(1, 1);
         fs_cam_config["cx"] >> K.at<double>(0, 2);
@@ -180,6 +181,7 @@ public:
 
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered_x(new pcl::PointCloud<pcl::PointXYZ>);
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered_y(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered_z(new pcl::PointCloud<pcl::PointXYZ>);
         pcl::PointCloud<pcl::PointXYZ >::Ptr plane(new pcl::PointCloud<pcl::PointXYZ>);
         pcl::PointCloud<pcl::PointXYZ >::Ptr plane_filtered(new pcl::PointCloud<pcl::PointXYZ>);
 
@@ -189,21 +191,28 @@ public:
         pass_x.setFilterFieldName("x");
         pass_x.setFilterLimits(0.0, 6.0);
         pass_x.filter(*cloud_filtered_x);
+
         pcl::PassThrough<pcl::PointXYZ> pass_y;
         pass_y.setInputCloud(cloud_filtered_x);
         pass_y.setFilterFieldName("y");
         pass_y.setFilterLimits(-1.25, 1.25);
         pass_y.filter(*cloud_filtered_y);
 
+        pcl::PassThrough<pcl::PointXYZ> pass_z;
+        pass_z.setInputCloud(cloud_filtered_y);
+        pass_z.setFilterFieldName("z");
+        pass_z.setFilterLimits(-0.5, 2);
+        pass_z.filter(*cloud_filtered_z);
+
         /// Plane Segmentation
         pcl::SampleConsensusModelPlane<pcl::PointXYZ>::Ptr model_p(
-                new pcl::SampleConsensusModelPlane<pcl::PointXYZ>(cloud_filtered_y));
+                new pcl::SampleConsensusModelPlane<pcl::PointXYZ>(cloud_filtered_z));
         pcl::RandomSampleConsensus<pcl::PointXYZ> ransac(model_p);
         ransac.setDistanceThreshold(0.01);
         ransac.computeModel();
         std::vector<int> inliers_indicies;
         ransac.getInliers(inliers_indicies);
-        pcl::copyPointCloud<pcl::PointXYZ>(*cloud_filtered_y, inliers_indicies, *plane);
+        pcl::copyPointCloud<pcl::PointXYZ>(*cloud_filtered_z, inliers_indicies, *plane);
 
         /// Statistical Outlier Removal
         pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
@@ -220,6 +229,7 @@ public:
             double Z = plane_filtered->points[i].z;
             lidar_points.push_back(Eigen::Vector3d(X, Y, Z));
         }
+        ROS_INFO_STREAM("No of planar_pts: " << lidar_points.size());
         pcl::toROSMsg(*plane_filtered, out_cloud);
         cloud_pub.publish(out_cloud);
     }

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<launch>
+  <param name ="/use_sim_time" value="true"/>
+
+  <param name = "result_file" type="string" value="$(find calibration)/debug_data/draw/C_T_L_left.txt"/>
+
+  <param name= "project_only_plane" type="bool" value="false"/>
+
+  <param name = "camera_in_topic" type="string" value="/nerian_stereo/left_image"/>
+  <param name = "lidar_in_topic" type="string" value="/velodyne_points"/>
+  <param name = "camera_name" type="string" value="nerian_left"/>
+  
+  <param name = "dist_cut_off" type="int" value="10"/>
+
+  <param name = "cam_config_file_path" type="string" value="$(find cam_lidar_calib)/config/nerian_passthru_faccal_left.yaml" />
+
+  <node  pkg="cam_lidar_calib" name="cam_lidar_proj_nerian_left" type="cam_lidar_proj_node" output="screen">
+  </node>
+</launch>
