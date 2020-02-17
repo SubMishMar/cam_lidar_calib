@@ -7,7 +7,6 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_ros
   roscpp
   sensor_msgs
-  velodyne_pointcloud
   message_filters
   cv_bridge
   tf

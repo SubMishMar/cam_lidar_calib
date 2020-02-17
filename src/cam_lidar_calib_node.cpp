@@ -10,8 +10,6 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
-#include <velodyne_pointcloud/point_types.h>
-
 #include <pcl/io/pcd_io.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl_conversions/pcl_conversions.h>
