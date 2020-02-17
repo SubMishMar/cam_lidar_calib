@@ -84,7 +84,6 @@ private:
     std::vector<std::vector<Eigen::Vector3d> > all_lidar_points;
     std::vector<Eigen::Vector3d> all_normals;
 
-    sensor_msgs::PointCloud2 out_cloud;
     std::string result_str, result_rpy;
 
     std::string camera_in_topic;
@@ -94,11 +93,15 @@ private:
 
     std::string cam_config_file_path;
     int image_width, image_height;
-
+    double x_min, x_max;
+    double y_min, y_max;
+    double z_min, z_max;
+    double ransac_threshold;
 public:
 
 
-    camLidarCalib() {
+    camLidarCalib(ros::NodeHandle n) {
+        nh = n;
         camera_in_topic = readParam<std::string>(nh, "camera_in_topic");
         lidar_in_topic = readParam<std::string>(nh, "lidar_in_topic");
 
@@ -106,7 +109,7 @@ public:
         image_sub = new message_filters::Subscriber<sensor_msgs::Image>(nh, camera_in_topic, 1);
         sync = new message_filters::Synchronizer<SyncPolicy>(SyncPolicy(10), *cloud_sub, *image_sub);
         sync->registerCallback(boost::bind(&camLidarCalib::callback, this, _1, _2));
-        cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("velodyne_points_out", 1);
+        cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("points_out", 1);
         projection_matrix = cv::Mat::zeros(3, 3, CV_64F);
         distCoeff = cv::Mat::zeros(5, 1, CV_64F);
         boardDetectedInCam = false;
@@ -135,6 +138,13 @@ public:
                 image_width,
                 distCoeff,
                 projection_matrix);
+        x_min = readParam<double>(nh, "x_min");
+        x_max = readParam<double>(nh, "x_max");
+        y_min = readParam<double>(nh, "y_min");
+        y_max = readParam<double>(nh, "y_max");
+        z_min = readParam<double>(nh, "z_min");
+        z_max = readParam<double>(nh, "z_max");
+        ransac_threshold = readParam<double>(nh, "ransac_threshold");
     }
 
     void readCameraParams(std::string cam_config_file_path,
@@ -189,26 +199,26 @@ public:
         pcl::PassThrough<pcl::PointXYZ> pass_x;
         pass_x.setInputCloud(in_cloud);
         pass_x.setFilterFieldName("x");
-        pass_x.setFilterLimits(0.0, 6.0);
+        pass_x.setFilterLimits(x_min, x_max);
         pass_x.filter(*cloud_filtered_x);
 
         pcl::PassThrough<pcl::PointXYZ> pass_y;
         pass_y.setInputCloud(cloud_filtered_x);
         pass_y.setFilterFieldName("y");
-        pass_y.setFilterLimits(-1.25, 1.25);
+        pass_y.setFilterLimits(y_min, y_max);
         pass_y.filter(*cloud_filtered_y);
 
         pcl::PassThrough<pcl::PointXYZ> pass_z;
         pass_z.setInputCloud(cloud_filtered_y);
         pass_z.setFilterFieldName("z");
-        pass_z.setFilterLimits(-0.5, 2);
+        pass_z.setFilterLimits(z_min, z_max);
         pass_z.filter(*cloud_filtered_z);
 
         /// Plane Segmentation
         pcl::SampleConsensusModelPlane<pcl::PointXYZ>::Ptr model_p(
                 new pcl::SampleConsensusModelPlane<pcl::PointXYZ>(cloud_filtered_z));
         pcl::RandomSampleConsensus<pcl::PointXYZ> ransac(model_p);
-        ransac.setDistanceThreshold(0.01);
+        ransac.setDistanceThreshold(ransac_threshold);
         ransac.computeModel();
         std::vector<int> inliers_indicies;
         ransac.getInliers(inliers_indicies);
@@ -229,9 +239,13 @@ public:
             double Z = plane_filtered->points[i].z;
             lidar_points.push_back(Eigen::Vector3d(X, Y, Z));
         }
-        ROS_INFO_STREAM("No of planar_pts: " << lidar_points.size());
-        pcl::toROSMsg(*plane_filtered, out_cloud);
-        cloud_pub.publish(out_cloud);
+//        ROS_INFO_STREAM("No of planar_pts: " << lidar_points.size());
+        ROS_WARN_STREAM("No of planar_pts: " << plane_filtered->points.size());
+//        sensor_msgs::PointCloud2 out_cloud;
+//        pcl::toROSMsg(*plane_filtered, out_cloud);
+//        out_cloud.header.frame_id = cloud_msg->header.frame_id;
+//        out_cloud.header.stamp = cloud_msg->header.stamp;
+//        cloud_pub.publish(out_cloud);
     }
 
     void imageHandler(const sensor_msgs::ImageConstPtr &image_msg) {
@@ -412,7 +426,8 @@ public:
 
 int main(int argc, char** argv) {
     ros::init(argc, argv, "CameraLidarCalib_node");
-    camLidarCalib cLC;
+    ros::NodeHandle nh("~");
+    camLidarCalib cLC(nh);
     ros::spin();
     return 0;
 }
