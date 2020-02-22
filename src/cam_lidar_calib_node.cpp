@@ -285,7 +285,7 @@ public:
 
     void runSolver() {
         if (lidar_points.size() > min_points_on_plane && boardDetectedInCam) {
-            if (r3.dot(r3_old) < 0.9) {
+            if (r3.dot(r3_old) < 0.90) {
                 r3_old = r3;
                 all_normals.push_back(Nc);
                 all_lidar_points.push_back(lidar_points);

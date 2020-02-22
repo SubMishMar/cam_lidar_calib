@@ -2,20 +2,20 @@
 <launch>
 
   <param name ="/use_sim_time" value="false"/>
-  <node  pkg="cam_lidar_calib" name="cam_lidar_calib_nerian_right" type="cam_lidar_calib_node" output="screen">
+  <node  pkg="cam_lidar_calib" name="cam_lidar_calib_basler" type="cam_lidar_calib_node" output="screen">
   	<param name = "dx" type="double" value="0.0615"/>
   	<param name = "dy" type="double" value="0.0615"/>
 
   	<param name = "checkerboard_rows" type = "int" value = "9" />
   	<param name = "checkerboard_cols" type = "int" value = "6" />
 
-  	<param name = "result_file" type="string" value="$(find calibration)/debug_data/draw/C_T_L_right_VLP_GP.txt"/>
-  	<param name = "result_rpy_file" type="string" value="$(find calibration)/debug_data/draw/rpy_txyz_right.txt"/>
+  	<param name = "result_file" type="string" value="$(find calibration)/debug_data/draw/C_T_L_basler_VLP_GP.txt"/>
+  	<param name = "result_rpy_file" type="string" value="$(find calibration)/debug_data/draw/rpy_txyz_basler.txt"/>
 
   	<param name = "min_points_on_plane" type="int" value="850"/>
-  	<param name = "num_views" type="int" value="13"/>
+  	<param name = "num_views" type="int" value="19"/>
 
-  	<param name = "camera_in_topic" type="string" value="/nerian_stereo/right_image"/>
+  	<param name = "camera_in_topic" type="string" value="/pylon_camera_node/image_raw"/>
   	<param name = "lidar_in_topic" type="string" value="/velodyne_points"/>
 
 	<param name="x_min" value="0"/>
@@ -26,6 +26,6 @@
     	<param name="z_max" value="2"/>
     	<param name="ransac_threshold" value="0.01"/>
 
-  	<param name = "cam_config_file_path" type="string" value="$(find cam_lidar_calib)/config/nerian_passthru_faccal_right.yaml" />
+  	<param name = "cam_config_file_path" type="string" value="$(find cam_lidar_calib)/config/basler.yaml" />
   </node>
 </launch>
