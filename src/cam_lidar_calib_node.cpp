@@ -2,6 +2,12 @@
 // Created by usl on 4/6/19.
 //
 
+#include <algorithm>
+#include <random>
+#include <chrono>
+#include <ctime>
+
+
 #include "ros/ros.h"
 #include "sensor_msgs/PointCloud2.h"
 #include "sensor_msgs/CameraInfo.h"
@@ -95,6 +101,9 @@ private:
     double y_min, y_max;
     double z_min, z_max;
     double ransac_threshold;
+    int no_of_initializations;
+    std::string initializations_file;
+    std::ofstream init_file;
 public:
 
 
@@ -122,7 +131,8 @@ public:
         checkerboard_cols = readParam<int>(nh, "checkerboard_cols");
         min_points_on_plane = readParam<int>(nh, "min_points_on_plane");
         num_views = readParam<int>(nh, "num_views");
-
+        no_of_initializations = readParam<int>(nh, "no_of_initializations");
+        initializations_file = readParam<std::string>(nh, "initializations_file");
         for(int i = 0; i < checkerboard_rows; i++)
             for (int j = 0; j < checkerboard_cols; j++)
                 object_points.emplace_back(cv::Point3f(i*dx, j*dy, 0.0));
@@ -180,6 +190,49 @@ public:
             n.shutdown();
         }
         return ans;
+    }
+
+    void addGaussianNoise(Eigen::Matrix4d &transformation) {
+        std::vector<double> data_rot = {0, 0, 0};
+        const double mean_rot = 0.0;
+        std::default_random_engine generator_rot;
+        generator_rot.seed(std::chrono::system_clock::now().time_since_epoch().count());
+        std::normal_distribution<double> dist(mean_rot, 90);
+
+        // Add Gaussian noise
+        for (auto& x : data_rot) {
+            x = x + dist(generator_rot);
+        }
+
+        double roll = data_rot[0]*M_PI/180;
+        double pitch = data_rot[1]*M_PI/180;
+        double yaw = data_rot[2]*M_PI/180;
+
+        Eigen::Matrix3d m;
+        m = Eigen::AngleAxisd(roll, Eigen::Vector3d::UnitX())
+            * Eigen::AngleAxisd(pitch,  Eigen::Vector3d::UnitY())
+            * Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ());
+
+        std::vector<double> data_trans = {0, 0, 0};
+        const double mean_trans = 0.0;
+        std::default_random_engine generator_trans;
+        generator_trans.seed(std::chrono::system_clock::now().time_since_epoch().count());
+        std::normal_distribution<double> dist_trans(mean_trans, 0.5);
+
+        // Add Gaussian noise
+        for (auto& x : data_trans) {
+            x = x + dist_trans(generator_trans);
+        }
+
+        Eigen::Vector3d trans;
+        trans(0) = data_trans[0];
+        trans(1) = data_trans[1];
+        trans(2) = data_trans[2];
+
+        Eigen::Matrix4d trans_noise = Eigen::Matrix4d::Identity();
+        trans_noise.block(0, 0, 3, 3) = m;
+        trans_noise.block(0, 3, 3, 1) = trans;
+        transformation = transformation*trans_noise;
     }
 
     void cloudHandler(const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
@@ -293,113 +346,126 @@ public:
                 ROS_INFO_STREAM("Recording View number: " << all_normals.size());
                 if (all_normals.size() >= num_views) {
                     ROS_INFO_STREAM("Starting optimization...");
+                    init_file.open(initializations_file);
+                    for(int counter = 0; counter < no_of_initializations; counter++) {
+                        /// Start Optimization here
 
-                    /// Start Optimization here
+                        /// Step 1: Initialization
+                        Eigen::Matrix4d transformation_matrix = Eigen::Matrix4d::Identity();
+                        addGaussianNoise(transformation_matrix);
+                        Eigen::Matrix3d Rotn = transformation_matrix.block(0, 0, 3, 3);
+                        Eigen::Vector3d axis_angle;
+                        ceres::RotationMatrixToAngleAxis(Rotn.data(), axis_angle.data());
 
-                    /// Step 1: Initialization
-                    Eigen::Matrix3d Rotn;
-                    Rotn(0, 0) = 1; Rotn(0, 1) = 0; Rotn(0, 2) = 0;
-                    Rotn(1, 0) = 0; Rotn(1, 1) = 1; Rotn(1, 2) = 0;
-                    Rotn(2, 0) = 0; Rotn(2, 1) = 0; Rotn(2, 2) = 1;
-                    Eigen::Vector3d axis_angle;
-                    ceres::RotationMatrixToAngleAxis(Rotn.data(), axis_angle.data());
+                        Eigen::Vector3d Translation =transformation_matrix.block(0, 3, 3, 1);
 
-                    Eigen::Vector3d Translation = Eigen::Vector3d(0, 0, 0);
-                    Eigen::VectorXd R_t(6);
-                    R_t(0) = axis_angle(0);
-                    R_t(1) = axis_angle(1);
-                    R_t(2) = axis_angle(2);
-                    R_t(3) = Translation(0);
-                    R_t(4) = Translation(1);
-                    R_t(5) = Translation(2);
-                    /// Step2: Defining the Loss function (Can be NULL)
+                        Eigen::Vector3d rpy_init = Rotn.eulerAngles(0, 1, 2)*180/M_PI;
+                        Eigen::Vector3d tran_init = transformation_matrix.block(0, 3, 3, 1);
+
+                        Eigen::VectorXd R_t(6);
+                        R_t(0) = axis_angle(0);
+                        R_t(1) = axis_angle(1);
+                        R_t(2) = axis_angle(2);
+                        R_t(3) = Translation(0);
+                        R_t(4) = Translation(1);
+                        R_t(5) = Translation(2);
+                        /// Step2: Defining the Loss function (Can be NULL)
 //                    ceres::LossFunction *loss_function = new ceres::CauchyLoss(1.0);
 //                    ceres::LossFunction *loss_function = new ceres::HuberLoss(0.1);
-                    ceres::LossFunction *loss_function = NULL;
+                        ceres::LossFunction *loss_function = NULL;
 
-                    /// Step 3: Form the Optimization Problem
-                    ceres::Problem problem;
-                    problem.AddParameterBlock(R_t.data(), 6);
-                    for (int i = 0; i < all_normals.size(); i++) {
-                        Eigen::Vector3d normal_i = all_normals[i];
-                        std::vector<Eigen::Vector3d> lidar_points_i
-                                = all_lidar_points[i];
-                        for (int j = 0; j < lidar_points_i.size(); j++) {
-                            Eigen::Vector3d lidar_point = lidar_points_i[j];
-                            ceres::CostFunction *cost_function = new
-                                    ceres::AutoDiffCostFunction<CalibrationErrorTerm, 1, 6>
-                                    (new CalibrationErrorTerm(lidar_point, normal_i));
-                            problem.AddResidualBlock(cost_function, loss_function, R_t.data());
+                        /// Step 3: Form the Optimization Problem
+                        ceres::Problem problem;
+                        problem.AddParameterBlock(R_t.data(), 6);
+                        for (int i = 0; i < all_normals.size(); i++) {
+                            Eigen::Vector3d normal_i = all_normals[i];
+                            std::vector<Eigen::Vector3d> lidar_points_i
+                                    = all_lidar_points[i];
+                            for (int j = 0; j < lidar_points_i.size(); j++) {
+                                Eigen::Vector3d lidar_point = lidar_points_i[j];
+                                ceres::CostFunction *cost_function = new
+                                        ceres::AutoDiffCostFunction<CalibrationErrorTerm, 1, 6>
+                                        (new CalibrationErrorTerm(lidar_point, normal_i));
+                                problem.AddResidualBlock(cost_function, loss_function, R_t.data());
+                            }
                         }
+
+                        /// Step 4: Solve it
+                        ceres::Solver::Options options;
+                        options.max_num_iterations = 200;
+                        options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+                        options.minimizer_progress_to_stdout = false;
+                        ceres::Solver::Summary summary;
+                        ceres::Solve(options, &problem, &summary);
+//                        std::cout << summary.FullReport() << '\n';
+
+
+
+                        /// Printing and Storing C_T_L in a file
+                        ceres::AngleAxisToRotationMatrix(R_t.data(), Rotn.data());
+                        Eigen::MatrixXd C_T_L(3, 4);
+                        C_T_L.block(0, 0, 3, 3) = Rotn;
+                        C_T_L.block(0, 3, 3, 1) = Eigen::Vector3d(R_t[3], R_t[4], R_t[5]);
+                        std::cout << "RPY = " << Rotn.eulerAngles(0, 1, 2)*180/M_PI << std::endl;
+                        std::cout << "t = " << C_T_L.block(0, 3, 3, 1) << std::endl;
+
+                        init_file << rpy_init(0) << "," << rpy_init(1) << "," << rpy_init(2) << ","
+                                  << tran_init(0) << "," << tran_init(1) << "," << tran_init(2) << "\n";
+                        init_file << Rotn.eulerAngles(0, 1, 2)(0)*180/M_PI << "," << Rotn.eulerAngles(0, 1, 2)(1)*180/M_PI << "," << Rotn.eulerAngles(0, 1, 2)(2)*180/M_PI << ","
+                                  << R_t[3] << "," << R_t[4] << "," << R_t[5] << "\n";
+
+                        /// Step 5: Covariance Estimation
+                        ceres::Covariance::Options options_cov;
+                        ceres::Covariance covariance(options_cov);
+                        std::vector<std::pair<const double*, const double*> > covariance_blocks;
+                        covariance_blocks.push_back(std::make_pair(R_t.data(), R_t.data()));
+                        CHECK(covariance.Compute(covariance_blocks, &problem));
+                        double covariance_xx[6 * 6];
+                        covariance.GetCovarianceBlock(R_t.data(),
+                                                      R_t.data(),
+                                                      covariance_xx);
+
+                        Eigen::MatrixXd cov_mat_RotTrans(6, 6);
+                        cv::Mat cov_mat_cv = cv::Mat(6, 6, CV_64F, &covariance_xx);
+                        cv::cv2eigen(cov_mat_cv, cov_mat_RotTrans);
+
+                        Eigen::MatrixXd cov_mat_TransRot(6, 6);
+                        cov_mat_TransRot.block(0, 0, 3, 3) = cov_mat_RotTrans.block(3, 3, 3, 3);
+                        cov_mat_TransRot.block(3, 3, 3, 3) = cov_mat_RotTrans.block(0, 0, 3, 3);
+                        cov_mat_TransRot.block(0, 3, 3, 3) = cov_mat_RotTrans.block(3, 0, 3, 3);
+                        cov_mat_TransRot.block(3, 0, 3, 3) = cov_mat_RotTrans.block(0, 3, 3, 3);
+
+                        double  sigma_xx = sqrt(cov_mat_TransRot(0, 0));
+                        double  sigma_yy = sqrt(cov_mat_TransRot(1, 1));
+                        double  sigma_zz = sqrt(cov_mat_TransRot(2, 2));
+
+                        double sigma_rot_xx = sqrt(cov_mat_TransRot(3, 3));
+                        double sigma_rot_yy = sqrt(cov_mat_TransRot(4, 4));
+                        double sigma_rot_zz = sqrt(cov_mat_TransRot(5, 5));
+
+                        std::cout << "sigma_xx = " << sigma_xx << "\t"
+                                  << "sigma_yy = " << sigma_yy << "\t"
+                                  << "sigma_zz = " << sigma_zz << std::endl;
+
+                        std::cout << "sigma_rot_xx = " << sigma_rot_xx*180/M_PI << "\t"
+                                  << "sigma_rot_yy = " << sigma_rot_yy*180/M_PI << "\t"
+                                  << "sigma_rot_zz = " << sigma_rot_zz*180/M_PI << std::endl;
+
+                        std::ofstream results;
+                        results.open(result_str);
+                        results << C_T_L;
+                        results.close();
+
+                        std::ofstream results_rpy;
+                        results_rpy.open(result_rpy);
+                        results_rpy << Rotn.eulerAngles(0, 1, 2)*180/M_PI << "\n" << C_T_L.block(0, 3, 3, 1);
+                        results_rpy.close();
+
+                        ROS_INFO_STREAM("No of initialization: " << counter);
                     }
-
-                    /// Step 4: Solve it
-                    ceres::Solver::Options options;
-                    options.max_num_iterations = 200;
-                    options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
-                    options.minimizer_progress_to_stdout = true;
-                    ceres::Solver::Summary summary;
-                    ceres::Solve(options, &problem, &summary);
-                    std::cout << summary.FullReport() << '\n';
-
-
-
-                    /// Printing and Storing C_T_L in a file
-                    ceres::AngleAxisToRotationMatrix(R_t.data(), Rotn.data());
-                    Eigen::MatrixXd C_T_L(3, 4);
-                    C_T_L.block(0, 0, 3, 3) = Rotn;
-                    C_T_L.block(0, 3, 3, 1) = Eigen::Vector3d(R_t[3], R_t[4], R_t[5]);
-
-                    std::cout << "RPY = " << Rotn.eulerAngles(0, 1, 2)*180/M_PI << std::endl;
-                    std::cout << "t = " << C_T_L.block(0, 3, 3, 1) << std::endl;
-
-                    /// Step 5: Covariance Estimation
-                    ceres::Covariance::Options options_cov;
-                    ceres::Covariance covariance(options_cov);
-                    std::vector<std::pair<const double*, const double*> > covariance_blocks;
-                    covariance_blocks.push_back(std::make_pair(R_t.data(), R_t.data()));
-                    CHECK(covariance.Compute(covariance_blocks, &problem));
-                    double covariance_xx[6 * 6];
-                    covariance.GetCovarianceBlock(R_t.data(),
-                                                  R_t.data(),
-                                                  covariance_xx);
-
-                    Eigen::MatrixXd cov_mat_RotTrans(6, 6);
-                    cv::Mat cov_mat_cv = cv::Mat(6, 6, CV_64F, &covariance_xx);
-                    cv::cv2eigen(cov_mat_cv, cov_mat_RotTrans);
-
-                    Eigen::MatrixXd cov_mat_TransRot(6, 6);
-                    cov_mat_TransRot.block(0, 0, 3, 3) = cov_mat_RotTrans.block(3, 3, 3, 3);
-                    cov_mat_TransRot.block(3, 3, 3, 3) = cov_mat_RotTrans.block(0, 0, 3, 3);
-                    cov_mat_TransRot.block(0, 3, 3, 3) = cov_mat_RotTrans.block(3, 0, 3, 3);
-                    cov_mat_TransRot.block(3, 0, 3, 3) = cov_mat_RotTrans.block(0, 3, 3, 3);
-
-                    double  sigma_xx = sqrt(cov_mat_TransRot(0, 0));
-                    double  sigma_yy = sqrt(cov_mat_TransRot(1, 1));
-                    double  sigma_zz = sqrt(cov_mat_TransRot(2, 2));
-
-                    double sigma_rot_xx = sqrt(cov_mat_TransRot(3, 3));
-                    double sigma_rot_yy = sqrt(cov_mat_TransRot(4, 4));
-                    double sigma_rot_zz = sqrt(cov_mat_TransRot(5, 5));
-
-                    std::cout << "sigma_xx = " << sigma_xx << "\t"
-                              << "sigma_yy = " << sigma_yy << "\t"
-                              << "sigma_zz = " << sigma_zz << std::endl;
-
-                    std::cout << "sigma_rot_xx = " << sigma_rot_xx*180/M_PI << "\t"
-                              << "sigma_rot_yy = " << sigma_rot_yy*180/M_PI << "\t"
-                              << "sigma_rot_zz = " << sigma_rot_zz*180/M_PI << std::endl;
-
-                    std::ofstream results;
-                    results.open(result_str);
-                    results << C_T_L;
-                    results.close();
+                    init_file.close();
                     ros::shutdown();
 
-                    std::ofstream results_rpy;
-                    results_rpy.open(result_rpy);
-                    results_rpy << Rotn.eulerAngles(0, 1, 2)*180/M_PI << "\n" << C_T_L.block(0, 3, 3, 1);
-                    results_rpy.close();
                 }
             } else {
                 ROS_WARN_STREAM("Not enough Rotation, view not recorded");

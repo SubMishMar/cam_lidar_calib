@@ -17,6 +17,8 @@
 
   	<param name = "camera_in_topic" type="string" value="/nerian_stereo/left_image"/>
   	<param name = "lidar_in_topic" type="string" value="/velodyne_points"/>
+	<param name = "no_of_initializations" type="int" value="1"/>
+	  <param name = "initializations_file" value="/home/subodh/catkin_ws/src/camera_lidar_calibration/calibration/debug_data/results/methodA/left_vlp/random_init.txt"/>
 
 	<param name="x_min" value="0"/>
     	<param name="x_max" value="6"/>
