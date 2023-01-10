@@ -320,9 +320,9 @@ public:
             }
             cv::projectPoints(objectPoints_L, rvec, tvec, projection_matrix, distCoeff, imagePoints, cv::noArray());
         } else {
-            pcl::PCLPointCloud2 *cloud_in = new pcl::PCLPointCloud2;
-            pcl_conversions::toPCL(*cloud_msg, *cloud_in);
-            pcl::fromPCLPointCloud2(*cloud_in, *in_cloud);
+            pcl::PCLPointCloud2 cloud_in;
+            pcl_conversions::toPCL(*cloud_msg, cloud_in);
+            pcl::fromPCLPointCloud2(cloud_in, *in_cloud);
 
             for(size_t i = 0; i < in_cloud->points.size(); i++) {
 
