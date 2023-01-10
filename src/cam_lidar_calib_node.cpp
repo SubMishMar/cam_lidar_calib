@@ -312,7 +312,7 @@ public:
                                       image_points,
                                       boardDetectedInCam);
             if(image_points.size() == object_points.size()){
-                cv::solvePnP(object_points, image_points, projection_matrix, distCoeff, rvec, tvec, false, CV_ITERATIVE);
+                cv::solvePnP(object_points, image_points, projection_matrix, distCoeff, rvec, tvec, false, cv::SOLVEPNP_ITERATIVE);
                 projected_points.clear();
                 cv::projectPoints(object_points, rvec, tvec, projection_matrix, distCoeff, projected_points, cv::noArray());
                 for(int i = 0; i < projected_points.size(); i++){
